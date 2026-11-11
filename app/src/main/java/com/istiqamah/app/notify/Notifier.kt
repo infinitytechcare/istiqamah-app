@@ -97,7 +97,7 @@ object Notifier {
                 val left = Duration.between(now, window.end).toMinutes().coerceAtLeast(1)
                 title = "${prayer.bn}-এর আর ${Bn.duration(left)} বাকি"
             }
-            NotifKind.DAILY_AYAH -> return
+            else -> return // নামাজের বাইরের ধরন এখানে আসে না (showExtra)
         }
         store.markSeen(main.id, today)
         pair?.let { store.markSeen(it.id, today) }
