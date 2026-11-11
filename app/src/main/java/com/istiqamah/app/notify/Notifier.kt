@@ -1,0 +1,174 @@
+package com.istiqamah.app.notify
+
+import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
+import com.istiqamah.app.MainActivity
+import com.istiqamah.app.R
+import com.istiqamah.app.core.Bn
+import com.istiqamah.app.core.ContentItem
+import com.istiqamah.app.core.ContentPicker
+import com.istiqamah.app.core.NotifKind
+import com.istiqamah.app.core.PlannedNotif
+import com.istiqamah.app.core.Prayer
+import com.istiqamah.app.core.PrayerStatus
+import com.istiqamah.app.data.ContentRepo
+import com.istiqamah.app.data.LogStore
+import com.istiqamah.app.data.Prefs
+import com.istiqamah.app.engine.Engine
+import java.time.Duration
+import java.time.LocalDate
+
+object Notifier {
+    const val CH_PRAYER = "prayer"
+    const val CH_AYAH = "ayah"
+    const val EXTRA_OPEN_CONTENT = "open_content"
+
+    fun createChannels(ctx: Context) {
+        val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
+        nm.createNotificationChannel(
+            NotificationChannel(CH_PRAYER, "নামাজের রিমাইন্ডার", NotificationManager.IMPORTANCE_HIGH).apply {
+                description = "ওয়াক্ত শুরু, মাঝামাঝি ও শেষ হওয়ার আগের রিমাইন্ডার"
+            }
+        )
+        nm.createNotificationChannel(
+            NotificationChannel(CH_AYAH, "দৈনিক আয়াত", NotificationManager.IMPORTANCE_DEFAULT).apply {
+                description = "প্রতিদিন একটা আয়াত বা হাদিস"
+            }
+        )
+    }
+
+    fun canPost(ctx: Context): Boolean =
+        (Build.VERSION.SDK_INT < 33 ||
+            ContextCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED) &&
+            NotificationManagerCompat.from(ctx).areNotificationsEnabled()
+
+    /** অ্যালার্ম বাজলে: পরিস্থিতি যাচাই করে কন্টেন্টসহ নোটিফিকেশন দেখানো */
+    fun showFor(ctx: Context, kind: NotifKind, prayer: Prayer?, date: LocalDate, isTest: Boolean = false) {
+        if (!canPost(ctx)) return
+        createChannels(ctx)
+        val store = LogStore.get(ctx)
+        val today = Engine.today(ctx)
+        val items = ContentRepo.all(ctx)
+        val seen = store.seenMap()
+
+        if (kind == NotifKind.DAILY_AYAH || prayer == null) {
+            val item = Engine.dailyItem(ctx, date) ?: return
+            post(ctx, PlannedNotif(date, null, kind, Engine.now(ctx)).id, CH_AYAH,
+                "আজকের আয়াত", item.shortBn, "${item.shortBn}\n— ${item.refBn}", item, prayer = null, date = date)
+            return
+        }
+
+        // ইতিমধ্যে লগ হয়ে গেলে আর বিরক্ত করব না
+        if (!isTest && store.day(date).status(prayer) != null) return
+
+        val window = Engine.windows(ctx, date)?.firstOrNull { it.prayer == prayer } ?: return
+        val now = Engine.now(ctx)
+        if (!isTest && !now.isBefore(window.end)) return // ওয়াক্ত শেষ — দেরিতে বাজা অ্যালার্ম ফেলে দিই
+
+        val salt = prayer.ordinal
+        val title: String
+        val main: ContentItem
+        var pair: ContentItem? = null
+        when (kind) {
+            NotifKind.N1_INVITE -> {
+                val tag = if (prayer == Prayer.FAJR && date.toEpochDay() % 2 == 0L) "fajr" else "salah_invite"
+                main = ContentPicker.pick(items, tag, seen, today, salt) ?: ContentPicker.pick(items, "salah_invite", seen, today, salt) ?: return
+                title = "${prayer.bn}-এর সময় হয়েছে"
+            }
+            NotifKind.N2_VIRTUE -> {
+                main = ContentPicker.pick(items, "salah_virtue", seen, today, salt) ?: return
+                title = "${prayer.bn}-এর সময় চলছে"
+            }
+            NotifKind.N3_LAST_CALL -> {
+                val (m, p) = ContentPicker.pickWithPair(items, "salah_warning", seen, today, salt) ?: return
+                main = m; pair = p
+                val left = Duration.between(now, window.end).toMinutes().coerceAtLeast(1)
+                title = "${prayer.bn}-এর আর ${Bn.duration(left)} বাকি"
+            }
+            NotifKind.DAILY_AYAH -> return
+        }
+        store.markSeen(main.id, today)
+        pair?.let { store.markSeen(it.id, today) }
+
+        val lines = mutableListOf(main.shortBn)
+        pair?.let { lines += it.shortBn }
+        // আগের ওয়াক্ত লগ হয়নি এবং শেষ হয়ে গেছে → নরম কাযা রিমাইন্ডার (শুধু N1-এ)
+        if (kind == NotifKind.N1_INVITE) qazaLine(ctx, date, prayer)?.let { lines += it }
+
+        val shortText = if (isTest) "টেস্ট: রিমাইন্ডার ঠিকমতো বাজছে ✓" else lines.first()
+        val bigText = lines.joinToString("\n\n") + "\n— ${main.refBn}"
+        val id = PlannedNotif(date, prayer, kind, now).id
+        post(ctx, id, CH_PRAYER, title, shortText, bigText, main, prayer, date, kind)
+    }
+
+    private fun qazaLine(ctx: Context, date: LocalDate, prayer: Prayer): String? {
+        if (prayer == Prayer.FAJR) return null
+        val prev = Prayer.fromOrdinal(prayer.ordinal - 1)
+        if (prev !in Prefs(ctx).stageState.focus) return null
+        val s = LogStore.get(ctx).day(date).status(prev)
+        return if (s == null || s == PrayerStatus.MISSED) "${prev.bn} কি ছুটে গেছে? এখনই কাযা করে নিন — আল্লাহ ক্ষমাশীল।" else null
+    }
+
+    @android.annotation.SuppressLint("MissingPermission") // canPost() আগে যাচাই করা হয়, SecurityException ধরা আছে
+    private fun post(
+        ctx: Context, id: Int, channel: String, title: String, text: String, bigText: String,
+        item: ContentItem, prayer: Prayer?, date: LocalDate, kind: NotifKind? = null,
+    ) {
+        val open = PendingIntent.getActivity(
+            ctx, id,
+            Intent(ctx, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                .putExtra(EXTRA_OPEN_CONTENT, item.id),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val b = NotificationCompat.Builder(ctx, channel)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .setCategory(if (prayer != null) NotificationCompat.CATEGORY_REMINDER else NotificationCompat.CATEGORY_RECOMMENDATION)
+            .setPriority(if (prayer != null) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
+            .setColor(0xFF105440.toInt())
+
+        if (prayer != null && kind != null) {
+            // ইচ্ছা করে "বন্ধ করো" বাটন নেই — শুধু পড়েছি বা একটু পরে
+            b.addAction(0, "পড়েছি ✓", actionIntent(ctx, id * 10 + 1, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.ALONE))
+            b.addAction(0, "জামাতে পড়েছি", actionIntent(ctx, id * 10 + 2, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.JAMAAH))
+            b.addAction(0, "১০ মিনিট পরে", actionIntent(ctx, id * 10 + 3, ActionReceiver.ACTION_SNOOZE, date, prayer, kind, null))
+        }
+        try {
+            NotificationManagerCompat.from(ctx).notify(id, b.build())
+        } catch (e: SecurityException) {
+            // অনুমতি নেই — কিছু করার নেই
+        }
+    }
+
+    private fun actionIntent(
+        ctx: Context, rc: Int, action: String, date: LocalDate, prayer: Prayer, kind: NotifKind, status: PrayerStatus?,
+    ): PendingIntent {
+        val i = Intent(ctx, ActionReceiver::class.java)
+            .setAction(action)
+            .putExtra(Engine.EXTRA_DATE, date.toString())
+            .putExtra(Engine.EXTRA_PRAYER, prayer.ordinal)
+            .putExtra(Engine.EXTRA_KIND, kind.name)
+            .putExtra(ActionReceiver.EXTRA_STATUS, status?.code ?: 0)
+        return PendingIntent.getBroadcast(ctx, rc, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
+
+    /** একটা ওয়াক্তের সব নোটিফিকেশন সরিয়ে দেয় (চেক-ইনের পর) */
+    fun cancelFor(ctx: Context, date: LocalDate, prayer: Prayer) {
+        val nm = NotificationManagerCompat.from(ctx)
+        for (k in NotifKind.entries) nm.cancel(PlannedNotif(date, prayer, k, Engine.now(ctx)).id)
+    }
+}

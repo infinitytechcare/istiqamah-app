@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- চাঁদ আর তার নিচে একটা স্থির রেখা — "অবিচল থাকা" -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <path android:fillColor="#FFD4AF37" android:pathData="M51.34,30.01 A20,20 0 1,0 70.20,58.30 A17,17 0 0,1 51.34,30.01 Z" />
+    <path android:fillColor="#FFF1D98A"
+        android:pathData="M66,40 l1.6,3.6 3.9,0.4 -2.9,2.6 0.8,3.8 -3.4,-2 -3.4,2 0.8,-3.8 -2.9,-2.6 3.9,-0.4 Z" />
+    <path android:fillColor="#FFD4AF37" android:pathData="M36,76 h36 a2,2 0 0,1 0,4 h-36 a2,2 0 0,1 0,-4 Z" />
+</vector>

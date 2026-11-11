@@ -1,0 +1,90 @@
+name: Build APK
+
+on:
+  push:
+    branches: [ main ]
+    paths-ignore:
+      - '**.md'
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Lint content (আয়াত/হাদিস যাচাই)
+        run: python3 tools/lint_content.py
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      - name: Unit tests (নামাজের সময়, ধাপ, রিমাইন্ডার)
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      # PR-এ শুধু টেস্ট; রিলিজ APK শুধু main ব্রাঞ্চে
+      - name: Restore signing key
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 secret নেই — স্থায়ী চাবি ছাড়া রিলিজ বানানো হবে না (নইলে আপডেট ইনস্টল হবে না)"
+            exit 1
+          fi
+          echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "KEYSTORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Build release APK
+        if: github.event_name != 'pull_request'
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Rename APK and show signing certificate
+        if: github.event_name != 'pull_request'
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk istiqamah.apk
+          APKSIGNER=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          "$APKSIGNER" verify --print-certs istiqamah.apk | grep -i "SHA-256"
+
+      - uses: actions/upload-artifact@v5
+        if: github.event_name != 'pull_request'
+        with:
+          name: istiqamah-apk
+          path: istiqamah.apk
+
+      - name: Read version
+        if: github.event_name != 'pull_request'
+        id: ver
+        run: |
+          V=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          echo "name=$V" >> "$GITHUB_OUTPUT"
+          cp istiqamah.apk "istiqamah-v$V.apk"
+
+      - name: Publish versioned release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ steps.ver.outputs.name }}
+        run: |
+          NOTES="ইস্তিকামাহ v$V — commit ${GITHUB_SHA::7} থেকে তৈরি।
+          APK ডাউনলোড করে ফোনে ইনস্টল করুন (Android 8+)।
+          পরীক্ষামূলক সংস্করণ: আয়াত/হাদিসের অনুবাদ ও সূত্র এখনো আলেমের রিভিউ পায়নি।"
+          if gh release view "v$V" >/dev/null 2>&1; then
+            gh release upload "v$V" "istiqamah-v$V.apk" --clobber
+            gh release edit "v$V" --notes "$NOTES"
+          else
+            gh release create "v$V" "istiqamah-v$V.apk" --title "ইস্তিকামাহ v$V" --notes "$NOTES" --prerelease
+          fi
