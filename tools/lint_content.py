@@ -14,7 +14,13 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 CONTENT = ROOT / "app" / "src" / "main" / "assets" / "content.json"
 
 # নোটিফিকেশন যেসব ট্যাগ থেকে বাছাই করে — প্রতিটায় যথেষ্ট আইটেম থাকা দরকার
-REQUIRED_TAGS = {"salah_invite": 5, "salah_virtue": 5, "salah_warning": 5, "hope_mercy": 5, "fajr": 2, "daily": 20}
+REQUIRED_TAGS = {
+    "salah_invite": 5, "salah_virtue": 5, "salah_warning": 5, "hope_mercy": 5, "fajr": 2, "daily": 20,
+    # লাভ-ক্ষতির জোড়া নোটিফিকেশন (v0.2.1)
+    "gain_dhikr": 3, "loss_dhikr": 3, "gain_muhasaba": 3, "loss_muhasaba": 3,
+    "gain_jumuah": 2, "loss_jumuah": 2, "kahf": 1,
+    "gain_fajr": 2, "loss_fajr": 1, "gain_asr": 1, "loss_asr": 1, "gain_isha": 1, "loss_isha": 1,
+}
 TONES = {"gentle", "encourage", "serious", "hope"}
 MAX_SHORT = 140  # নোটিফিকেশনে এক নজরে পড়ার মতো
 
@@ -45,7 +51,7 @@ def main() -> int:
         pw = it.get("pair_with")
         if pw and pw not in known:
             errors.append(f"{i}: pair_with অচেনা ট্যাগ {pw}")
-        if it.get("tone") == "serious" and "salah_warning" in it.get("tags", []) and not pw:
+        if it.get("tone") == "serious" and any(t == "salah_warning" or t.startswith("loss_") for t in it.get("tags", [])) and not pw:
             errors.append(f"{i}: সতর্কতার সাথে আশার বার্তা (pair_with) বাধ্যতামূলক")
         if len(it.get("short_bn", "")) > MAX_SHORT:
             errors.append(f"{i}: short_bn {len(it['short_bn'])} অক্ষর — {MAX_SHORT}-এর মধ্যে রাখুন")

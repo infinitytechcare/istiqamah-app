@@ -191,3 +191,52 @@ class AzkarTest {
         assertNotNull(Azkar.suggested(w[0].start, w))
     }
 }
+
+class GainLossTest {
+    private fun item(id: String, vararg tags: String) =
+        ContentItem(id, tags.toList(), "ayah", "ref-$id", bn = "bn", bnSource = "src", shortBn = "short-$id", tone = "gentle")
+
+    private val items = listOf(
+        item("g1", "salah_virtue"), item("g2", "salah_virtue"), item("gf", "gain_fajr"),
+        item("l1", "salah_warning"), item("lf", "loss_fajr"),
+        item("both", "salah_virtue", "salah_warning"),
+    )
+    private val today = LocalDate.of(2026, 11, 11)
+
+    @Test fun gainAndLossAreNeverTheSameItem() {
+        repeat(20) { s ->
+            val gl = ContentPicker.gainLoss(items, "salah_virtue", null, "salah_warning", null, emptyMap(), today.plusDays(s.toLong()), s)
+            assertNotNull(gl.gain); assertNotNull(gl.loss)
+            assertTrue(gl.gain!!.id != gl.loss!!.id)
+            assertTrue("salah_virtue" in gl.gain!!.tags)
+            assertTrue("salah_warning" in gl.loss!!.tags)
+        }
+    }
+
+    @Test fun preferSpecificUsesPrayerItems() {
+        val (sg, sl) = Amal.specificFor(Prayer.FAJR)!!
+        val gl = ContentPicker.gainLoss(items, "salah_virtue", sg, "salah_warning", sl, emptyMap(), today, 0, preferSpecific = true)
+        assertEquals("gf", gl.gain!!.id)
+        assertEquals("lf", gl.loss!!.id)
+        assertNull(Amal.specificFor(Prayer.DHUHR))
+    }
+
+    @Test fun recentlyShownAreAvoided() {
+        val shown = mapOf("g1" to today.minusDays(2), "both" to today.minusDays(2))
+        repeat(10) { s ->
+            val gl = ContentPicker.gainLoss(items, "salah_virtue", null, "salah_warning", null, shown, today, s)
+            assertEquals("g2", gl.gain!!.id)
+        }
+    }
+
+    @Test fun formatPutsLossFirstOnLastCall() {
+        val gl = GainLoss(item("g", "x"), item("l", "y"))
+        val (short, big) = gl.format(Amal.SALAH, lossFirst = true)
+        assertTrue(short.startsWith("না পড়লে ক্ষতি"))
+        assertTrue(big.indexOf("⚠️") < big.indexOf("✅"))
+        val (short2, big2) = gl.format(Amal.SALAH)
+        assertTrue(short2.startsWith("পড়লে লাভ"))
+        assertTrue(big2.indexOf("✅") < big2.indexOf("⚠️"))
+        assertTrue(big2.contains("— ref-g") && big2.contains("— ref-l"))
+    }
+}

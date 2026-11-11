@@ -13,10 +13,13 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.istiqamah.app.MainActivity
 import com.istiqamah.app.R
+import com.istiqamah.app.core.Amal
 import com.istiqamah.app.core.AzkarSet
 import com.istiqamah.app.core.Bn
 import com.istiqamah.app.core.ContentItem
 import com.istiqamah.app.core.ContentPicker
+import com.istiqamah.app.core.GainLoss
+import com.istiqamah.app.core.format
 import com.istiqamah.app.core.NotifKind
 import com.istiqamah.app.core.PlannedNotif
 import com.istiqamah.app.core.Prayer
@@ -77,41 +80,45 @@ object Notifier {
         val now = Engine.now(ctx)
         if (!isTest && !now.isBefore(window.end)) return // ওয়াক্ত শেষ — দেরিতে বাজা অ্যালার্ম ফেলে দিই
 
-        val salt = prayer.ordinal
-        val title: String
-        val main: ContentItem
-        var pair: ContentItem? = null
-        when (kind) {
-            NotifKind.N1_INVITE -> {
-                val tag = if (prayer == Prayer.FAJR && date.toEpochDay() % 2 == 0L) "fajr" else "salah_invite"
-                main = ContentPicker.pick(items, tag, seen, today, salt) ?: ContentPicker.pick(items, "salah_invite", seen, today, salt) ?: return
-                title = "${prayer.bn}-এর সময় হয়েছে"
-            }
-            NotifKind.N2_VIRTUE -> {
-                main = ContentPicker.pick(items, "salah_virtue", seen, today, salt) ?: return
-                title = "${prayer.bn}-এর সময় চলছে"
-            }
+        // প্রতি রিমাইন্ডারে লাভ-ক্ষতির জোড়া। ফজর/আসর/ইশায় একদিন পরপর ওয়াক্তের নিজস্ব আয়াত-হাদিস।
+        val salt = prayer.ordinal * 3 + kind.ordinal
+        val specific = Amal.specificFor(prayer)
+        val gl = ContentPicker.gainLoss(
+            items,
+            Amal.SALAH.gainGeneral, specific?.first,
+            Amal.SALAH.lossGeneral, specific?.second,
+            seen, today, salt,
+            preferSpecific = (date.toEpochDay() + kind.ordinal) % 2 == 0L,
+        )
+        val lastCall = kind == NotifKind.N3_LAST_CALL
+        val title = when (kind) {
+            NotifKind.N1_INVITE -> "${prayerName(date, prayer)}-এর সময় হয়েছে"
+            NotifKind.N2_VIRTUE -> "${prayerName(date, prayer)}-এর সময় চলছে"
             NotifKind.N3_LAST_CALL -> {
-                val (m, p) = ContentPicker.pickWithPair(items, "salah_warning", seen, today, salt) ?: return
-                main = m; pair = p
                 val left = Duration.between(now, window.end).toMinutes().coerceAtLeast(1)
-                title = "${prayer.bn}-এর আর ${Bn.duration(left)} বাকি"
+                "${prayerName(date, prayer)}-এর আর ${Bn.duration(left)} বাকি"
             }
             else -> return // নামাজের বাইরের ধরন এখানে আসে না (showExtra)
         }
-        store.markSeen(main.id, today)
-        pair?.let { store.markSeen(it.id, today) }
+        listOfNotNull(gl.gain, gl.loss).forEach { store.markSeen(it.id, today) }
+        val (short, body) = gl.format(Amal.SALAH, lossFirst = lastCall)
 
-        val lines = mutableListOf(main.shortBn)
-        pair?.let { lines += it.shortBn }
+        val extra = mutableListOf<String>()
         // আগের ওয়াক্ত লগ হয়নি এবং শেষ হয়ে গেছে → নরম কাযা রিমাইন্ডার (শুধু N1-এ)
-        if (kind == NotifKind.N1_INVITE) qazaLine(ctx, date, prayer)?.let { lines += it }
+        if (kind == NotifKind.N1_INVITE) qazaLine(ctx, date, prayer)?.let { extra += it }
+        // শেষ সতর্কতায় ভয়ের সাথে আশা: এখনো সময় আছে
+        if (lastCall) extra += "এখনো সময় আছে — উঠে দাঁড়ান, আল্লাহ অপেক্ষা করছেন।"
 
-        val shortText = if (isTest) "টেস্ট: রিমাইন্ডার ঠিকমতো বাজছে ✓" else lines.first()
-        val bigText = lines.joinToString("\n\n") + "\n— ${main.refBn}"
+        val shortText = if (isTest) "টেস্ট: রিমাইন্ডার ঠিকমতো বাজছে ✓" else short
+        val bigText = (listOf(body) + extra).filter { it.isNotBlank() }.joinToString("\n\n")
         val id = PlannedNotif(date, prayer, kind, now).id
-        post(ctx, id, CH_PRAYER, title, shortText, bigText, main, prayer, date, kind)
+        // ট্যাপ করলে লাভের আয়াত/হাদিসটা খোলে (না থাকলে ক্ষতিরটা)
+        post(ctx, id, CH_PRAYER, title, shortText, bigText, gl.gain ?: gl.loss, prayer, date, kind)
     }
+
+    /** শুক্রবার যোহর = জুমা */
+    private fun prayerName(date: LocalDate, p: Prayer) =
+        if (p == Prayer.DHUHR && date.dayOfWeek == java.time.DayOfWeek.FRIDAY) "জুমা/যোহর" else p.bn
 
     private fun qazaLine(ctx: Context, date: LocalDate, prayer: Prayer): String? {
         if (prayer == Prayer.FAJR) return null
@@ -164,6 +171,16 @@ object Notifier {
         val id = PlannedNotif(date, null, kind, Engine.now(ctx)).id
         fun simple(title: String, body: String, route: String?) =
             post(ctx, id, CH_AYAH, title, body.lineSequence().first(), body, null, null, date, route = route)
+        val items = ContentRepo.all(ctx)
+        val seen = store.seenMap()
+        val today = Engine.today(ctx)
+        /** লাভ-ক্ষতির জোড়াসহ নোটিফিকেশন; intro থাকলে সবার শেষে এক লাইন */
+        fun withGainLoss(title: String, amal: Amal, gl: GainLoss, intro: String?, route: String?) {
+            listOfNotNull(gl.gain, gl.loss).forEach { store.markSeen(it.id, today) }
+            val (short, body) = gl.format(amal)
+            val big = listOfNotNull(body.ifBlank { null }, intro).joinToString("\n\n")
+            post(ctx, id, CH_AYAH, title, short.ifBlank { intro ?: title }, big, null, null, date, route = route)
+        }
         when (kind) {
             NotifKind.DAILY_AYAH -> {
                 val item = Engine.dailyItem(ctx, date) ?: return
@@ -174,30 +191,23 @@ object Notifier {
                 val set = if (kind == NotifKind.AZKAR_MORNING) AzkarSet.MORNING else AzkarSet.EVENING
                 if ((date to set) in store.azkarDone(date, date)) return
                 val n = AzkarRepo.forSet(ctx, set).size
-                simple(
-                    "${set.bn}ের সময়",
-                    "${set.whenBn} — ${Bn.num(n)}টি যিকির, ১০–১৫ মিনিট।\n“জেনে রাখ, আল্লাহর যিকির দ্বারাই অন্তর শান্তি পায়।” (১৩:২৮)",
-                    "azkar:${set.name}",
-                )
+                val gl = ContentPicker.gainLoss(items, Amal.DHIKR.gainGeneral, null, Amal.DHIKR.lossGeneral, null, seen, today, set.code)
+                withGainLoss("${set.bn}ের সময়", Amal.DHIKR, gl, "${set.whenBn} — ${Bn.num(n)}টি যিকির, ১০–১৫ মিনিট।", "azkar:${set.name}")
             }
             NotifKind.MUHASABA -> {
                 if (store.muhasaba(date) != null) return
-                simple(
-                    "আজকের হিসাব — ৯০ সেকেন্ড",
-                    "আজ কী ভালো করলেন, কোথায় ভুল হলো, কাল কী বদলাবেন?\n“প্রত্যেক ব্যক্তির উচিত, আগামী কালের জন্যে সে কি প্রেরণ করে, তা চিন্তা করা।” (৫৯:১৮)",
-                    "muhasaba",
-                )
+                val gl = ContentPicker.gainLoss(items, Amal.MUHASABA.gainGeneral, null, Amal.MUHASABA.lossGeneral, null, seen, today, 7)
+                withGainLoss("আজকের হিসাব — ৯০ সেকেন্ড", Amal.MUHASABA, gl, "আজ কী ভালো করলেন, কোথায় ভুল হলো, কাল কী বদলাবেন?", "muhasaba")
             }
-            NotifKind.JUMUAH_EVE -> simple(
-                "আগামীকাল জুমা",
-                "জুমার দিনে সূরা কাহফ পড়ার ফজিলত সহিহ হাদিসে এসেছে — আজ মাগরিব থেকে শুরু করা যায়।\nবেশি বেশি দরুদ পড়ুন।",
-                null,
-            )
-            NotifKind.JUMUAH_DAY -> simple(
-                "আজ জুমা — সপ্তাহের সেরা দিন",
-                "গোসল, পরিষ্কার পোশাক, সূরা কাহফ আর বেশি বেশি দরুদ।\nজুমার নামাজে আগে আগে মসজিদে যাওয়ার বিশেষ সওয়াব আছে।",
-                null,
-            )
+            NotifKind.JUMUAH_EVE -> {
+                // কাহফের লাভ + জুমা ছাড়ার ক্ষতি
+                val gl = ContentPicker.gainLoss(items, "kahf", null, Amal.JUMUAH.lossGeneral, null, seen, today, 11)
+                withGainLoss("আগামীকাল জুমা", Amal.JUMUAH, gl, "আজ মাগরিব থেকেই সূরা কাহফ শুরু করা যায়। বেশি বেশি দরুদ পড়ুন।", null)
+            }
+            NotifKind.JUMUAH_DAY -> {
+                val gl = ContentPicker.gainLoss(items, Amal.JUMUAH.gainGeneral, null, Amal.JUMUAH.lossGeneral, null, seen, today, 12)
+                withGainLoss("আজ জুমা — সপ্তাহের সেরা দিন", Amal.JUMUAH, gl, "গোসল, পরিষ্কার পোশাক, সূরা কাহফ, বেশি বেশি দরুদ — আর আগে আগে মসজিদে।", null)
+            }
             NotifKind.WEEKLY_REVIEW -> {
                 val logs = LogStore.get(ctx).range(date.minusDays(13), date)
                 val r = Weekly.review(logs, date)
