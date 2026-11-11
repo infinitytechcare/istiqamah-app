@@ -74,11 +74,36 @@ def main() -> int:
         if have < n:
             errors.append(f"ট্যাগ '{tag}'-এ {have}টি আইটেম — অন্তত {n}টি লাগবে")
 
-    unreviewed = sum(1 for it in items if not it.get("reviewed_by"))
+    # ---------- আযকার ----------
+    azkar_path = CONTENT.parent / "azkar.json"
+    az = json.loads(azkar_path.read_text(encoding="utf-8"))["items"] if azkar_path.exists() else []
+    az_ids = set()
+    for it in az:
+        i = it.get("id", "?")
+        if i in az_ids:
+            errors.append(f"আযকার {i}: আইডি দুবার")
+        az_ids.add(i)
+        if it.get("set") not in ("MORNING", "EVENING", "AFTER_SALAH", "SLEEP"):
+            errors.append(f"আযকার {i}: অচেনা set")
+        for k in ("title", "arabic", "meaning", "ref", "grading"):
+            if not it.get(k):
+                errors.append(f"আযকার {i}: '{k}' ফাঁকা")
+        if not isinstance(it.get("count"), int) or not 1 <= it["count"] <= 1000:
+            errors.append(f"আযকার {i}: count ভুল")
+        # ছোট যিকিরের উচ্চারণ বাধ্যতামূলক (দীর্ঘ কুরআনের অংশ ছাড়া)
+        if not it.get("pron") and len(it.get("arabic", "")) < 300:
+            errors.append(f"আযকার {i}: বাংলা উচ্চারণ নেই")
+        if not it.get("reviewed_by"):
+            (errors if strict else warnings).append(f"আযকার {i}: আলেমের রিভিউ বাকি")
+    for st in ("MORNING", "EVENING", "AFTER_SALAH", "SLEEP"):
+        if az and not any(x["set"] == st for x in az):
+            errors.append(f"আযকার সেট {st} ফাঁকা")
+
+    unreviewed = sum(1 for it in items if not it.get("reviewed_by")) + sum(1 for it in az if not it.get("reviewed_by"))
     for w in warnings:
         if "রিভিউ বাকি" not in w:
             print("সতর্কতা:", w)
-    print(f"মোট {len(items)}টি আইটেম, রিভিউ বাকি {unreviewed}টি")
+    print(f"মোট {len(items)}টি আয়াত/হাদিস ও {len(az)}টি আযকার, রিভিউ বাকি {unreviewed}টি")
     for e in errors:
         print("ত্রুটি:", e)
     if errors:

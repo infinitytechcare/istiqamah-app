@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.istiqamah.app.MainActivity
 import com.istiqamah.app.R
+import com.istiqamah.app.core.AzkarSet
 import com.istiqamah.app.core.Bn
 import com.istiqamah.app.core.ContentItem
 import com.istiqamah.app.core.ContentPicker
@@ -20,6 +21,8 @@ import com.istiqamah.app.core.NotifKind
 import com.istiqamah.app.core.PlannedNotif
 import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
+import com.istiqamah.app.core.Weekly
+import com.istiqamah.app.data.AzkarRepo
 import com.istiqamah.app.data.ContentRepo
 import com.istiqamah.app.data.LogStore
 import com.istiqamah.app.data.Prefs
@@ -31,6 +34,8 @@ object Notifier {
     const val CH_PRAYER = "prayer"
     const val CH_AYAH = "ayah"
     const val EXTRA_OPEN_CONTENT = "open_content"
+    /** নোটিফিকেশন থেকে কোন স্ক্রিন খুলবে: "azkar:MORNING", "muhasaba", "weekly" */
+    const val EXTRA_ROUTE = "route"
 
     fun createChannels(ctx: Context) {
         val nm = ctx.getSystemService(NotificationManager::class.java) ?: return
@@ -60,10 +65,8 @@ object Notifier {
         val items = ContentRepo.all(ctx)
         val seen = store.seenMap()
 
-        if (kind == NotifKind.DAILY_AYAH || prayer == null) {
-            val item = Engine.dailyItem(ctx, date) ?: return
-            post(ctx, PlannedNotif(date, null, kind, Engine.now(ctx)).id, CH_AYAH,
-                "আজকের আয়াত", item.shortBn, "${item.shortBn}\n— ${item.refBn}", item, prayer = null, date = date)
+        if (!kind.isPrayer || prayer == null) {
+            showExtra(ctx, kind, date)
             return
         }
 
@@ -121,15 +124,13 @@ object Notifier {
     @android.annotation.SuppressLint("MissingPermission") // canPost() আগে যাচাই করা হয়, SecurityException ধরা আছে
     private fun post(
         ctx: Context, id: Int, channel: String, title: String, text: String, bigText: String,
-        item: ContentItem, prayer: Prayer?, date: LocalDate, kind: NotifKind? = null,
+        item: ContentItem?, prayer: Prayer?, date: LocalDate, kind: NotifKind? = null, route: String? = null,
     ) {
-        val open = PendingIntent.getActivity(
-            ctx, id,
-            Intent(ctx, MainActivity::class.java)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                .putExtra(EXTRA_OPEN_CONTENT, item.id),
-            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-        )
+        val openIntent = Intent(ctx, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+        item?.let { openIntent.putExtra(EXTRA_OPEN_CONTENT, it.id) }
+        route?.let { openIntent.putExtra(EXTRA_ROUTE, it) }
+        val open = PendingIntent.getActivity(ctx, id, openIntent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         val b = NotificationCompat.Builder(ctx, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(title)
@@ -151,6 +152,63 @@ object Notifier {
             NotificationManagerCompat.from(ctx).notify(id, b.build())
         } catch (e: SecurityException) {
             // অনুমতি নেই — কিছু করার নেই
+        }
+    }
+
+    /**
+     * নামাজের বাইরের রিমাইন্ডার। কাজটা ইতিমধ্যে হয়ে গেলে দেখায় না।
+     * গোপনীয়তা: কোনো নোটিফিকেশনে গুনাহের নাম বা মুহাসাবার লেখা থাকে না।
+     */
+    private fun showExtra(ctx: Context, kind: NotifKind, date: LocalDate) {
+        val store = LogStore.get(ctx)
+        val id = PlannedNotif(date, null, kind, Engine.now(ctx)).id
+        fun simple(title: String, body: String, route: String?) =
+            post(ctx, id, CH_AYAH, title, body.lineSequence().first(), body, null, null, date, route = route)
+        when (kind) {
+            NotifKind.DAILY_AYAH -> {
+                val item = Engine.dailyItem(ctx, date) ?: return
+                post(ctx, id, CH_AYAH, "আজকের ${if (item.type == "hadith") "হাদিস" else "আয়াত"}", item.shortBn,
+                    "${item.shortBn}\n— ${item.refBn}", item, prayer = null, date = date)
+            }
+            NotifKind.AZKAR_MORNING, NotifKind.AZKAR_EVENING -> {
+                val set = if (kind == NotifKind.AZKAR_MORNING) AzkarSet.MORNING else AzkarSet.EVENING
+                if ((date to set) in store.azkarDone(date, date)) return
+                val n = AzkarRepo.forSet(ctx, set).size
+                simple(
+                    "${set.bn}ের সময়",
+                    "${set.whenBn} — ${Bn.num(n)}টি যিকির, ১০–১৫ মিনিট।\n“জেনে রাখ, আল্লাহর যিকির দ্বারাই অন্তর শান্তি পায়।” (১৩:২৮)",
+                    "azkar:${set.name}",
+                )
+            }
+            NotifKind.MUHASABA -> {
+                if (store.muhasaba(date) != null) return
+                simple(
+                    "আজকের হিসাব — ৯০ সেকেন্ড",
+                    "আজ কী ভালো করলেন, কোথায় ভুল হলো, কাল কী বদলাবেন?\n“প্রত্যেক ব্যক্তির উচিত, আগামী কালের জন্যে সে কি প্রেরণ করে, তা চিন্তা করা।” (৫৯:১৮)",
+                    "muhasaba",
+                )
+            }
+            NotifKind.JUMUAH_EVE -> simple(
+                "আগামীকাল জুমা",
+                "জুমার দিনে সূরা কাহফ পড়ার ফজিলত সহিহ হাদিসে এসেছে — আজ মাগরিব থেকে শুরু করা যায়।\nবেশি বেশি দরুদ পড়ুন।",
+                null,
+            )
+            NotifKind.JUMUAH_DAY -> simple(
+                "আজ জুমা — সপ্তাহের সেরা দিন",
+                "গোসল, পরিষ্কার পোশাক, সূরা কাহফ আর বেশি বেশি দরুদ।\nজুমার নামাজে আগে আগে মসজিদে যাওয়ার বিশেষ সওয়াব আছে।",
+                null,
+            )
+            NotifKind.WEEKLY_REVIEW -> {
+                val logs = LogStore.get(ctx).range(date.minusDays(13), date)
+                val r = Weekly.review(logs, date)
+                val diff = when {
+                    r.change > 0 -> "গত সপ্তাহের চেয়ে ${Bn.num(r.change)} ওয়াক্ত বেশি — আলহামদুলিল্লাহ!"
+                    r.change < 0 -> "গত সপ্তাহের চেয়ে ${Bn.num(-r.change)} ওয়াক্ত কম — নতুন সপ্তাহে আবার শুরু।"
+                    else -> "গত সপ্তাহের সমান।"
+                }
+                simple("এই সপ্তাহের হিসাব তৈরি", "এ সপ্তাহে সময়মতো ${Bn.num(r.onTimeTotal)} ওয়াক্ত। $diff\nদেখে নিন আর পরের সপ্তাহের একটা লক্ষ্য ঠিক করুন।", "weekly")
+            }
+            else -> Unit
         }
     }
 

@@ -13,8 +13,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // প্রতি রিলিজে versionCode অবশ্যই বাড়াতে হবে, নইলে আপডেট ইনস্টল হবে না
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
     }
 
     // স্থায়ী চাবি: CI-তে GitHub Secret থেকে আসে। প্রথম রিলিজ থেকেই একই চাবি —
@@ -71,6 +71,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("androidx.biometric:biometric:1.1.0")
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")

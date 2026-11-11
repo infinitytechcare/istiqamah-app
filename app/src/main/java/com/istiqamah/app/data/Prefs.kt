@@ -114,6 +114,44 @@ class Prefs(context: Context) {
         }
         set(v) = sp.edit().putString("daily_date", v?.first?.toString()).putString("daily_id", v?.second).apply()
 
+    // ---------- v0.2: নামাজের বাইরের রিমাইন্ডার ----------
+    var azkarReminders: Boolean
+        get() = sp.getBoolean("azkar_on", true)
+        set(v) = sp.edit().putBoolean("azkar_on", v).apply()
+
+    /** null = মুহাসাবার রিমাইন্ডার বন্ধ */
+    var muhasabaAt: LocalTime?
+        get() = if (sp.getBoolean("muh_on", true)) LocalTime.of(sp.getInt("muh_h", 22), sp.getInt("muh_m", 0)) else null
+        set(v) {
+            if (v == null) sp.edit().putBoolean("muh_on", false).apply()
+            else sp.edit().putBoolean("muh_on", true).putInt("muh_h", v.hour).putInt("muh_m", v.minute).apply()
+        }
+
+    var jumuahReminders: Boolean
+        get() = sp.getBoolean("jumuah_on", true)
+        set(v) = sp.edit().putBoolean("jumuah_on", v).apply()
+
+    var weeklyReminders: Boolean
+        get() = sp.getBoolean("weekly_on", true)
+        set(v) = sp.edit().putBoolean("weekly_on", v).apply()
+
+    val extras: com.istiqamah.app.core.ExtraReminders
+        get() = com.istiqamah.app.core.ExtraReminders(dailyAyahAt, azkarReminders, muhasabaAt, jumuahReminders, weeklyReminders)
+
+    /** গোপন অংশে (গুনাহ ট্র্যাকার, মুহাসাবার ইতিহাস) ঢুকতে ফোনের লক */
+    var lockPrivate: Boolean
+        get() = sp.getBoolean("lock_private", true)
+        set(v) = sp.edit().putBoolean("lock_private", v).apply()
+
+    /** এ সপ্তাহের লক্ষ্য — সাপ্তাহিক পর্যালোচনায় বাছাই করা, পরের শুক্রবার পর্যন্ত */
+    var weeklyGoal: Pair<LocalDate, String>?
+        get() {
+            val d = runCatching { LocalDate.parse(sp.getString("wgoal_date", "")) }.getOrNull() ?: return null
+            val g = sp.getString("wgoal", null) ?: return null
+            return d to g
+        }
+        set(v) = sp.edit().putString("wgoal_date", v?.first?.toString()).putString("wgoal", v?.second).apply()
+
     var batteryGuideSeen: Boolean
         get() = sp.getBoolean("battery_seen", false)
         set(v) = sp.edit().putBoolean("battery_seen", v).apply()

@@ -63,7 +63,7 @@ import com.istiqamah.app.engine.Engine
 import java.time.LocalTime
 
 @Composable
-fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit) {
+fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> Unit) -> Unit) {
     val ctx = LocalContext.current
     val p = vm.prefs
     // settingsVersion পড়লে সেটিং বদলের পর এই স্ক্রিন আবার আঁকা হয়
@@ -97,11 +97,29 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit) {
                     )
                 }
                 if (p.dailyAyahAt != null) Item("দৈনিক আয়াতের সময়", Bn.time(p.dailyAyahAt!!)) { dialog = "ayahTime" }
+                ToggleRow("সকাল-সন্ধ্যার আযকার", "ফজর ও আসরের পর মনে করিয়ে দেবে", p.azkarReminders) { p.azkarReminders = it; vm.settingsChanged() }
+                ToggleRow("রাতের মুহাসাবা", p.muhasabaAt?.let { Bn.time(it) } ?: "বন্ধ", p.muhasabaAt != null) {
+                    p.muhasabaAt = if (it) LocalTime.of(22, 0) else null; vm.settingsChanged()
+                }
+                if (p.muhasabaAt != null) Item("মুহাসাবার সময়", Bn.time(p.muhasabaAt!!)) { dialog = "muhTime" }
+                ToggleRow("জুমার রিমাইন্ডার", "বৃহস্পতিবার রাতে সূরা কাহফ, শুক্রবার সকালে সুন্নত", p.jumuahReminders) { p.jumuahReminders = it; vm.settingsChanged() }
+                ToggleRow("সাপ্তাহিক পর্যালোচনা", "শুক্রবার আসরের পর", p.weeklyReminders) { p.weeklyReminders = it; vm.settingsChanged() }
+                Text("নামাজ ছাড়া অন্য রিমাইন্ডার দিনে সর্বোচ্চ ৪টি — বেশি হলে দৈনিক আয়াত আগে বাদ পড়ে।", fontSize = 12.sp, color = Muted, modifier = Modifier.padding(top = 4.dp))
                 Item("ব্যাটারি গাইড", "রিমাইন্ডার না এলে এখানে দেখুন", onClick = onOpenBattery)
                 Item("টেস্ট রিমাইন্ডার", "১ মিনিট পরে একটা টেস্ট নোটিফিকেশন — ফোন লক করে দেখুন") {
                     Engine.scheduleTestAlarm(ctx)
                     Toast.makeText(ctx, "১ মিনিট পরে টেস্ট রিমাইন্ডার আসবে", Toast.LENGTH_LONG).show()
                 }
+            }
+            Spacer(Modifier.height(12.dp))
+            SectionCard {
+                Title("গোপনীয়তা")
+                ToggleRow("গোপন অংশে ফোনের লক", "গুনাহ ট্র্যাকার ও মুহাসাবার লেখা দেখতে আঙুলের ছাপ/পিন", p.lockPrivate) { on ->
+                    // লক বন্ধ করতে আগে আনলক — নইলে ফোন হাতে পাওয়া যে কেউ বন্ধ করে দেখে ফেলতে পারত
+                    if (on) { p.lockPrivate = true; vm.settingsChanged() }
+                    else requestUnlock { p.lockPrivate = false; vm.settingsChanged() }
+                }
+                Text("গুনাহের লক্ষ্য ও মুহাসাবার লেখা ফোনের Keystore দিয়ে এনক্রিপ্ট করা থাকে। নোটিফিকেশনে কখনো এদের নাম দেখানো হয় না।", fontSize = 12.sp, color = Muted, lineHeight = 18.sp)
             }
             Spacer(Modifier.height(12.dp))
             SectionCard {
@@ -111,6 +129,7 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit) {
                         "• আপনার সব তথ্য শুধু এই ফোনে। অ্যাপের ইন্টারনেট অনুমতি নেই, কোনো বিজ্ঞাপন বা ট্র্যাকিং নেই।\n" +
                         "• কুরআনের আরবি: Noble Qur'an Encyclopedia (quranenc.com), বাংলা অনুবাদ: মুহিউদ্দীন খান।\n" +
                         "• হাদিসের বাংলা ভাবার্থ ও সূত্র রিলিজের আগে আলেমের রিভিউ প্রয়োজন।\n" +
+                        "• আযকারের আরবি: হিসনুল মুসলিম (Dua Speed Reader ডেটা, CC BY 4.0); উচ্চারণ ও অর্থ রিভিউ বাকি।\n" +
                         "• মাসআলা জানতে স্থানীয় আলেমকে জিজ্ঞেস করুন — এই অ্যাপ ফতোয়ার উৎস নয়।",
                     fontSize = 14.sp, color = Muted, lineHeight = 21.sp,
                 )
@@ -143,11 +162,25 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit) {
             "hijri" -> Choice("হিজরি তারিখ সংশোধন", (-2..2).map { "${Bn.num(it)} দিন — ${Bn.hijri(java.time.LocalDate.now(), it)}" }, p.hijriAdjust + 2, close) {
                 p.hijriAdjust = it - 2; vm.settingsChanged()
             }
+            "muhTime" -> Choice("মুহাসাবার সময়", (19..23).map { Bn.time(LocalTime.of(it, 0)) }, (p.muhasabaAt?.hour ?: 22) - 19, close) {
+                p.muhasabaAt = LocalTime.of(it + 19, 0); vm.settingsChanged()
+            }
             "ayahTime" -> Choice("দৈনিক আয়াতের সময়", (5..22).map { Bn.time(LocalTime.of(it, 0)) }, (p.dailyAyahAt?.hour ?: 9) - 5, close) {
                 p.dailyAyahAt = LocalTime.of(it + 5, 0); vm.settingsChanged()
             }
             "adjust" -> AdjustDialog(vm, close)
         }
+    }
+}
+
+@Composable
+private fun ToggleRow(title: String, subtitle: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
+        Column(Modifier.weight(1f)) {
+            Text(title, fontSize = 17.sp, color = Ink)
+            Text(subtitle, fontSize = 14.sp, color = Muted)
+        }
+        Switch(checked = checked, onCheckedChange = onChange, colors = SwitchDefaults.colors(checkedTrackColor = Emerald700))
     }
 }
 

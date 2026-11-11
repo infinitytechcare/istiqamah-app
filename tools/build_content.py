@@ -47,8 +47,10 @@ def parse_ref(ref: str):
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser()
+    ap = argparse.ArgumentParser(description="আয়াত/হাদিস ও আযকারের content ফাইল বানায়")
     ap.add_argument("--quran-dir", required=True, help="quran-json প্যাকেটের dist ফোল্ডার")
+    ap.add_argument("--adhkar-dir", help="@kazishariar/morning-evening-adhkar-data প্যাকেট ফোল্ডার")
+    ap.add_argument("--hisn-dir", help="@kazishariar/hisnul-muslim-data প্যাকেট ফোল্ডার")
     args = ap.parse_args()
 
     quran = json.loads((pathlib.Path(args.quran_dir) / "quran_bn.json").read_text(encoding="utf-8"))
@@ -109,6 +111,77 @@ def main() -> int:
         encoding="utf-8",
     )
     print(f"{len(items)}টি আইটেম লেখা হয়েছে → {OUT.relative_to(ROOT)}")
+    if args.adhkar_dir and args.hisn_dir:
+        return build_azkar(quran, args.adhkar_dir, args.hisn_dir)
+    return 0
+
+
+
+# =====================================================================
+# আযকার: tools/azkar_src.json → assets/azkar.json
+# =====================================================================
+AZKAR_SRC = ROOT / "tools" / "azkar_src.json"
+AZKAR_OUT = ROOT / "app" / "src" / "main" / "assets" / "azkar.json"
+AZKAR_ATTR = "আরবি: হিসনুল মুসলিম (Dua Speed Reader ডেটা, CC BY 4.0) ও কুরআন (quranenc.com)"
+SURAH_NAMES = {112: "সূরা ইখলাস", 113: "সূরা ফালাক", 114: "সূরা নাস", 2: "সূরা আল-বাকারা"}
+AR_DIGITS = str.maketrans("0123456789", "٠١٢٣٤٥٦٧٨٩")
+
+
+def build_azkar(quran, adhkar_dir, hisn_dir) -> int:
+    src = json.loads(AZKAR_SRC.read_text(encoding="utf-8"))["items"]
+    me = {x["id"]: x for x in json.loads((pathlib.Path(adhkar_dir) / "data.json").read_text(encoding="utf-8"))["data"]}
+    hisn = {x["id"]: x for x in json.loads((pathlib.Path(hisn_dir) / "data.json").read_text(encoding="utf-8"))["data"]}
+    by_id = {x["id"]: x for x in src}
+
+    def verses(s, a1, a2):
+        return [v for v in quran[s - 1]["verses"] if a1 <= v["id"] <= a2]
+
+    def quran_text(it):
+        if "quran" in it:
+            s, a1, a2 = parse_ref(it["quran"])
+            vs = verses(s, a1, a2)
+            ar = " ".join(f"{v['text']} ﴿{str(v['id']).translate(AR_DIGITS)}﴾" for v in vs)
+            bn = " ".join(v["translation"].strip() for v in vs)
+            return ar, nfc(bn)
+        ars, bns = [], []
+        for s in it["quran_surahs"]:
+            vs = quran[s - 1]["verses"]
+            ars.append(" ".join(f"{v['text']} ﴿{str(v['id']).translate(AR_DIGITS)}﴾" for v in vs))
+            bns.append(f"{SURAH_NAMES.get(s, s)}: " + " ".join(v["translation"].strip() for v in vs))
+        return "\n\n".join(ars), nfc("\n\n".join(bns))
+
+    out, order = [], {}
+    for it in src:
+        if "quran" in it or "quran_surahs" in it:
+            arabic, meaning = quran_text(it)
+        elif "me" in it:
+            arabic, meaning = me[it["me"]]["arabic"], None
+        elif "hisn" in it:
+            arabic, meaning = hisn[it["hisn"]]["arabic"], None
+        else:
+            arabic, meaning = it["arabic"], None
+        meaning = nfc(it.get("meaning")) or (nfc(by_id[it["meaning_from"]]["meaning"]) if "meaning_from" in it else None) or meaning
+        pron = it.get("pron")
+        if pron is None and "pron_from" in it:
+            pron = by_id[it["pron_from"]]["pron"]
+        for s in it["sets"]:
+            order[s] = order.get(s, 0) + 1
+            out.append({
+                "id": it["id"] if len(it["sets"]) == 1 else f"{it['id']}_{s.lower()}",
+                "set": s,
+                "order": order[s],
+                "title": it["title"],
+                "arabic": arabic.strip(),
+                "pron": nfc(pron or ""),
+                "meaning": meaning or "",
+                "count": it["count"],
+                "ref": it["ref"],
+                "grading": it["grading"],
+                "note": nfc(it.get("note", "")),
+                "reviewed_by": it.get("reviewed_by"),
+            })
+    AZKAR_OUT.write_text(json.dumps({"version": 1, "attribution": AZKAR_ATTR, "items": out}, ensure_ascii=False, indent=1), encoding="utf-8")
+    print(f"{len(out)}টি আযকার আইটেম লেখা হয়েছে → {AZKAR_OUT.relative_to(ROOT)}")
     return 0
 
 

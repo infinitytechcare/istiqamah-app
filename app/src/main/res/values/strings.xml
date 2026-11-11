@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">ইস্তিকামাহ</string>
+    <string name="widget_name">ইস্তিকামাহ — নামাজ</string>
+    <string name="widget_desc">পরের ওয়াক্ত, আজকের হিসাব আর এক ট্যাপে \"পড়েছি\"</string>
 </resources>

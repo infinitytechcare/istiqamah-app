@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- হোম স্ক্রিন উইজেট — RemoteViews-এ শুধু সাধারণ View চলে -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@drawable/widget_bg"
+    android:orientation="vertical"
+    android:padding="14dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/w_title"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:text="ইস্তিকামাহ"
+                android:textColor="#FFFFFFFF"
+                android:textSize="18sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/w_sub"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:maxLines="1"
+                android:textColor="#FFF1D98A"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <Button
+            android:id="@+id/w_prayed"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:background="@drawable/widget_button"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:text="পড়েছি ✓"
+            android:textColor="#FF062A20"
+            android:textSize="14sp"
+            android:visibility="gone" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:orientation="horizontal">
+
+        <TextView android:id="@+id/dot_0" style="@style/WidgetDot" />
+        <TextView android:id="@+id/dot_1" style="@style/WidgetDot" />
+        <TextView android:id="@+id/dot_2" style="@style/WidgetDot" />
+        <TextView android:id="@+id/dot_3" style="@style/WidgetDot" />
+        <TextView android:id="@+id/dot_4" style="@style/WidgetDot" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <TextView style="@style/WidgetLabel" android:text="ফজর" />
+        <TextView style="@style/WidgetLabel" android:text="যোহর" />
+        <TextView style="@style/WidgetLabel" android:text="আসর" />
+        <TextView style="@style/WidgetLabel" android:text="মাগরিব" />
+        <TextView style="@style/WidgetLabel" android:text="ইশা" />
+    </LinearLayout>
+
+    <TextView
+        android:id="@+id/w_streak"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:textColor="#CCFFFFFF"
+        android:textSize="12sp" />
+</LinearLayout>

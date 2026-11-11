@@ -9,4 +9,23 @@
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@color/emerald_900</item>
     </style>
+
+    <style name="WidgetDot">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:text">○</item>
+        <item name="android:textColor">#66FFFFFF</item>
+        <item name="android:textSize">20sp</item>
+    </style>
+
+    <style name="WidgetLabel">
+        <item name="android:layout_width">0dp</item>
+        <item name="android:layout_height">wrap_content</item>
+        <item name="android:layout_weight">1</item>
+        <item name="android:gravity">center</item>
+        <item name="android:textColor">#CCFFFFFF</item>
+        <item name="android:textSize">11sp</item>
+    </style>
 </resources>

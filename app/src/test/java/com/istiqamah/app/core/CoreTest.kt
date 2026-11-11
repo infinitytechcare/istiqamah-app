@@ -136,7 +136,8 @@ class PlannerTest {
     )
 
     private fun input(intensity: Intensity, focus: Set<Prayer> = Prayer.entries.toSet(), logged: Set<Pair<LocalDate, Prayer>> = emptySet(), habit: Set<Prayer> = emptySet()) =
-        PlannerInput(d.atStartOfDay(zone), windows, intensity, focus, habit, logged, LocalTime.of(9, 0))
+        PlannerInput(d.atStartOfDay(zone), windows, intensity, focus, habit, logged,
+            ExtraReminders(LocalTime.of(9, 0), azkar = false, muhasabaAt = null, jumuah = false, weekly = false))
 
     @Test fun strongGivesThreePerPrayerPlusAyah() {
         val p = Planner.plan(input(Intensity.STRONG))

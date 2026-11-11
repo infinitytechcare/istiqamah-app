@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,6 +41,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.istiqamah.app.core.Azkar
+import com.istiqamah.app.core.AzkarSet
 import com.istiqamah.app.core.Bn
 import com.istiqamah.app.core.ContentItem
 import com.istiqamah.app.core.Prayer
@@ -52,7 +55,8 @@ import java.time.LocalDate
 private data class SheetTarget(val date: LocalDate, val prayer: Prayer, val isPast: Boolean)
 
 @Composable
-fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, onOpenBattery: () -> Unit) {
+fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, open: (String) -> Unit) {
+    val onOpenBattery = { open("battery") }
     val t = vm.todayState ?: return
     var sheet by remember { mutableStateOf<SheetTarget?>(null) }
 
@@ -85,9 +89,44 @@ fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, onOpenBattery: () ->
                 }
                 Spacer(Modifier.height(8.dp))
                 Text(
-                    "লক্ষ্য: " + t.stage.focus.sortedBy { it.ordinal }.joinToString(" · ") { it.bn },
+                    "লক্ষ্য: " + t.stage.focus.sortedBy { it.ordinal }.joinToString(" · ") { t.prayerName(it) },
                     fontSize = 15.sp, color = Ink,
                 )
+                t.progress?.let { pr ->
+                    Spacer(Modifier.height(10.dp))
+                    LinearProgressIndicator(
+                        progress = { pr.fraction },
+                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                        color = Gold, trackColor = Emerald50,
+                    )
+                    val nums = if (pr.percent) "${Bn.num(pr.current)}% / ${Bn.num(pr.target)}%" else "${Bn.num(pr.current)} / ${Bn.num(pr.target)} দিন"
+                    Text("পরের ধাপ (${pr.nextBn}): ${pr.labelBn} — $nums", fontSize = 13.sp, color = Muted, modifier = Modifier.padding(top = 4.dp))
+                    if (pr.waitDays > 0) Text("কমপক্ষে আরও ${Bn.num(pr.waitDays)} দিন অভ্যাস ধরে রাখতে হবে", fontSize = 12.sp, color = Muted)
+                }
+                t.weeklyGoal?.let {
+                    Spacer(Modifier.height(8.dp))
+                    Text("এ সপ্তাহের লক্ষ্য: $it", fontSize = 14.sp, color = Emerald700, fontWeight = FontWeight.SemiBold)
+                }
+            }
+        }
+
+        // এখন কোন আযকারের সময় / ইশার পর মুহাসাবা
+        val suggest = Azkar.suggested(vm.now, t.windows)
+        if (suggest != null && suggest !in t.azkarDone && suggest != AzkarSet.SLEEP) {
+            item {
+                Card16(Modifier.clickable { open("azkar:${suggest.name}") }) {
+                    Text("এখন ${suggest.bn}ের সময়", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+                    Text("${suggest.whenBn} · ট্যাপ করে শুরু করুন", fontSize = 14.sp, color = Muted)
+                }
+            }
+        }
+        val ishaStart = t.windows.firstOrNull { it.prayer == Prayer.ISHA }?.start
+        if (ishaStart != null && !vm.now.isBefore(ishaStart) && !t.muhasabaDone) {
+            item {
+                Card16(Modifier.clickable { open("muhasaba") }) {
+                    Text("আজকের হিসাব — রাতের মুহাসাবা", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+                    Text("৯০ সেকেন্ড: আজ কী ভালো হলো, কোথায় ভুল, কাল কী বদলাবেন", fontSize = 14.sp, color = Muted)
+                }
             }
         }
 
@@ -96,7 +135,7 @@ fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, onOpenBattery: () ->
                 Text("আজকের নামাজ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
                 Spacer(Modifier.height(6.dp))
                 t.windows.forEach { w ->
-                    PrayerRow(w, t.log.status(w.prayer), w.prayer in t.stage.focus, vm.now.isBefore(w.start)) {
+                    PrayerRow(w, t.prayerName(w.prayer), t.log.status(w.prayer), w.prayer in t.stage.focus, vm.now.isBefore(w.start)) {
                         sheet = SheetTarget(t.today, w.prayer, isPast = !vm.now.isBefore(w.end))
                     }
                 }
@@ -169,18 +208,18 @@ private fun Header(vm: AppVm) {
         Spacer(Modifier.height(16.dp))
         if (cur != null && t.log.status(cur.prayer) == null) {
             val left = Duration.between(vm.now, cur.end).toMinutes()
-            Text("এখন ${cur.prayer.bn}-এর সময়", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text("এখন ${t.prayerName(cur.prayer)}-এর সময়", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Text("শেষ হবে ${Bn.time(cur.end.toLocalTime())} — আর ${Bn.duration(left)}", color = GoldLight, fontSize = 16.sp)
         } else if (next != null) {
             val left = Duration.between(vm.now, next.start).toMinutes()
-            Text("পরের নামাজ: ${next.prayer.bn}", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+            Text("পরের নামাজ: ${if (next.start.toLocalDate() == t.today) t.prayerName(next.prayer) else next.prayer.bn}", color = Color.White, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Text("${Bn.time(next.start.toLocalTime())} — আর ${Bn.duration(left)}", color = GoldLight, fontSize = 16.sp)
         }
     }
 }
 
 @Composable
-private fun PrayerRow(w: PrayerWindow, status: com.istiqamah.app.core.PrayerStatus?, isFocus: Boolean, notStarted: Boolean, onClick: () -> Unit) {
+private fun PrayerRow(w: PrayerWindow, name: String, status: com.istiqamah.app.core.PrayerStatus?, isFocus: Boolean, notStarted: Boolean, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -192,7 +231,7 @@ private fun PrayerRow(w: PrayerWindow, status: com.istiqamah.app.core.PrayerStat
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(
-                w.prayer.bn + if (isFocus) "  ★" else "",
+                name + if (isFocus) "  ★" else "",
                 fontSize = 18.sp, fontWeight = FontWeight.SemiBold, color = if (notStarted) Muted else Ink,
             )
             Text("${Bn.time(w.start.toLocalTime())} – ${Bn.time(w.end.toLocalTime())}", fontSize = 13.sp, color = Muted)

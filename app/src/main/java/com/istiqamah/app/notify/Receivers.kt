@@ -35,6 +35,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 val p = intent.getIntExtra(Engine.EXTRA_PRAYER, -1).takeIf { it in 0..4 }?.let(Prayer::fromOrdinal)
                 val date = runCatching { LocalDate.parse(intent.getStringExtra(Engine.EXTRA_DATE)) }.getOrElse { Engine.today(ctx) }
                 Notifier.showFor(ctx, kind, p, date, isTest = intent.getBooleanExtra(Engine.EXTRA_TEST, false))
+                // ওয়াক্ত শুরু হলে উইজেটে "এখন …" দেখাই
+                if (kind.isPrayer) PrayerWidget.updateAll(ctx)
             }
         }
     }

@@ -6,6 +6,9 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import android.util.Log
+import androidx.core.app.NotificationManagerCompat
+import com.istiqamah.app.core.Azkar
+import com.istiqamah.app.core.AzkarSet
 import com.istiqamah.app.core.ContentItem
 import com.istiqamah.app.core.ContentPicker
 import com.istiqamah.app.core.DayLog
@@ -18,11 +21,13 @@ import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
 import com.istiqamah.app.core.PrayerTimesCalculator
 import com.istiqamah.app.core.PrayerWindow
+import com.istiqamah.app.data.AzkarRepo
 import com.istiqamah.app.data.ContentRepo
 import com.istiqamah.app.data.LogStore
 import com.istiqamah.app.data.Prefs
 import com.istiqamah.app.notify.AlarmReceiver
 import com.istiqamah.app.notify.Notifier
+import com.istiqamah.app.notify.PrayerWidget
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -42,7 +47,7 @@ object Engine {
     private const val RC_RESCHEDULE = 1
     private const val RC_TEST = 2
     /** স্নুজের requestCode — মূল আইডির সাথে না মেলার জন্য অফসেট */
-    const val SNOOZE_OFFSET = 5_000_000
+    const val SNOOZE_OFFSET = 20_000_000
 
     fun zone(ctx: Context): ZoneId = Prefs(ctx).location?.zone ?: ZoneId.systemDefault()
     fun now(ctx: Context): ZonedDateTime = ZonedDateTime.now(zone(ctx))
@@ -97,7 +102,10 @@ object Engine {
         // পুরনো অ্যালার্ম বাতিল
         for (idStr in prefs.scheduledIds) idStr.toIntOrNull()?.let { cancelAlarm(ctx, am, it) }
         prefs.scheduledIds = emptySet()
-        if (!prefs.onboarded || prefs.location == null) return
+        if (!prefs.onboarded || prefs.location == null) {
+            PrayerWidget.updateAll(ctx)
+            return
+        }
 
         evaluateStageIfNeeded(ctx)
 
@@ -110,8 +118,14 @@ object Engine {
         val stage = prefs.stageState
         val habitFormed = Prayer.entries.filter { Habit.isHabitFormed(it, recent, today) }.toSet()
 
+        val store = LogStore.get(ctx)
         val plan = Planner.plan(
-            PlannerInput(now, windowsByDate, prefs.intensity, stage.focus, habitFormed, logged, prefs.dailyAyahAt)
+            PlannerInput(
+                now, windowsByDate, prefs.intensity, stage.focus, habitFormed, logged,
+                extras = prefs.extras,
+                azkarDone = store.azkarDone(today, today.plusDays(1)),
+                muhasabaDone = store.muhasabaDates(today, today.plusDays(1)),
+            )
         )
         val ids = HashSet<String>()
         for (p in plan) {
@@ -129,6 +143,7 @@ object Engine {
         )
         setAlarm(ctx, am, RC_RESCHEDULE, midnight, pi)
         Log.d(TAG, "scheduled ${plan.size} reminders")
+        PrayerWidget.updateAll(ctx)
     }
 
     /** ১০ মিনিট পরে আবার মনে করানো */
@@ -173,6 +188,34 @@ object Engine {
             .putExtra(EXTRA_TEST, true)
         val pi = PendingIntent.getBroadcast(ctx, RC_TEST, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         setAlarm(ctx, am, RC_TEST, p.fireAt.toInstant().toEpochMilli(), pi)
+    }
+
+    // ---------- v0.2: আযকার, মুহাসাবা, গুনাহ ট্র্যাকার ----------
+
+    /** একটা আযকারে একবার ট্যাপ। সেট শেষ হলে true (তখন রিমাইন্ডার বাতিল হয়)। */
+    fun azkarTap(ctx: Context, date: LocalDate, set: AzkarSet, itemId: String, newCount: Int): Boolean {
+        val store = LogStore.get(ctx)
+        store.setAzkarCount(date, itemId, newCount)
+        val items = AzkarRepo.forSet(ctx, set)
+        val done = Azkar.isDone(items, store.azkarCounts(date))
+        if (done && (date to set) !in store.azkarDone(date, date)) {
+            store.markAzkarDone(date, set)
+            NotificationManagerCompat.from(ctx).cancel(PlannedNotif(date, null, if (set == AzkarSet.EVENING) NotifKind.AZKAR_EVENING else NotifKind.AZKAR_MORNING, now(ctx)).id)
+            reschedule(ctx)
+            return true
+        }
+        return done
+    }
+
+    fun saveMuhasaba(ctx: Context, e: LogStore.MuhasabaEntry, slipGoalIds: Set<Long>) {
+        val store = LogStore.get(ctx)
+        store.saveMuhasaba(e)
+        // মুহাসাবায় টিক দেওয়া গুনাহ = আজকের একটা ঘটনা (দিনে একবারই গোনা)
+        val today = e.date
+        val already = store.sinEvents().filter { it.at.toLocalDate() == today }.map { it.goalId }.toSet()
+        for (id in slipGoalIds - already) store.addSinEvent(id, now(ctx).toLocalDateTime(), emptySet())
+        NotificationManagerCompat.from(ctx).cancel(PlannedNotif(today, null, NotifKind.MUHASABA, now(ctx)).id)
+        reschedule(ctx)
     }
 
     /** নির্দিষ্ট সময়ে অ্যালার্ম বাজার অনুমতি আছে কিনা (Android 12+) */
