@@ -20,6 +20,9 @@ REQUIRED_TAGS = {
     "gain_dhikr": 3, "loss_dhikr": 3, "gain_muhasaba": 3, "loss_muhasaba": 3,
     "gain_jumuah": 2, "loss_jumuah": 2, "kahf": 1,
     "gain_fajr": 2, "loss_fajr": 1, "gain_asr": 1, "loss_asr": 1, "gain_isha": 1, "loss_isha": 1,
+    # সুন্নত দিনলিপি (v0.3)
+    "sunnah_breakfast": 2, "sunnah_qailula": 1, "sunnah_dinner": 2, "sunnah_sleep": 2,
+    "sunnah_duha": 1, "sunnah_tahajjud": 1, "sunnah_fast": 1,
 }
 TONES = {"gentle", "encourage", "serious", "hope"}
 MAX_SHORT = 140  # নোটিফিকেশনে এক নজরে পড়ার মতো

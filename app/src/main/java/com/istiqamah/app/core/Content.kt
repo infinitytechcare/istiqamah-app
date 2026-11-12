@@ -72,6 +72,16 @@ fun GainLoss.format(amal: Amal, lossFirst: Boolean = false): Pair<String, String
     return (short?.let { "$label: ${it.shortBn}" } ?: "") to parts.joinToString("\n\n")
 }
 
+/**
+ * একটা মাত্র পুরস্কার বা ক্ষতির নোটিফিকেশনের লেখা। (এক লাইনের সংক্ষেপ, পূর্ণ লেখা)
+ * ক্ষতির শেষে সবসময় আশার একটা লাইন — ভয় যেন হতাশায় না গড়ায়।
+ */
+fun ContentItem.formatSingle(amal: Amal, gain: Boolean, hopeLine: String? = null): Pair<String, String> {
+    val label = if (gain) "✅ ${amal.gainLabel}" else "⚠️ ${amal.lossLabel}"
+    val body = "$label:\n$shortBn\n— $refBn" + (hopeLine?.let { "\n\n$it" } ?: "")
+    return "${if (gain) amal.gainLabel else amal.lossLabel}: $shortBn" to body
+}
+
 object ContentPicker {
     /** একই আইটেম আবার দেখানোর আগে কমপক্ষে এত দিন */
     const val REPEAT_GAP_DAYS = 30L
@@ -118,6 +128,31 @@ object ContentPicker {
     }
 
     private const val POOL_TAG = "__pool__"
+
+    /**
+     * আগে "major" (সবচেয়ে বড় পুরস্কার/ক্ষতি) — যদি ৩০ দিনে না-দেখানো কোনোটা থাকে; নইলে পুরো পুল থেকে।
+     */
+    fun pickMajorFirst(
+        items: List<ContentItem>,
+        tags: Collection<String>,
+        lastShown: Map<String, LocalDate>,
+        today: LocalDate,
+        salt: Int = 0,
+        exclude: Set<String> = emptySet(),
+    ): ContentItem? {
+        val freshMajor = items.filter { item ->
+            "major" in item.tags && item.id !in exclude && item.tags.any { it in tags } &&
+                (lastShown[item.id]?.let { ChronoUnit.DAYS.between(it, today) >= REPEAT_GAP_DAYS } ?: true)
+        }
+        if (freshMajor.isNotEmpty()) return pickAny(freshMajor, tags, lastShown, today, salt)
+        return pickAny(items, tags, lastShown, today, salt, exclude)
+    }
+
+    /** একটা আমলের পুরস্কার বা ক্ষতির ট্যাগ (সাধারণ + দরকার হলে ওয়াক্ত-নির্দিষ্ট) */
+    fun tagsFor(amal: Amal, prayer: Prayer?, gain: Boolean): List<String> {
+        val specific = prayer?.let { Amal.specificFor(it) }?.let { if (gain) it.first else it.second }
+        return listOfNotNull(if (gain) amal.gainGeneral else amal.lossGeneral, specific)
+    }
 
     /**
      * লাভ-ক্ষতির জোড়া: একটা "করলে লাভ", একটা "না করলে ক্ষতি" — কখনো একই আইটেম নয়।

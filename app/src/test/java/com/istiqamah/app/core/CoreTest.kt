@@ -139,14 +139,14 @@ class PlannerTest {
         PlannerInput(d.atStartOfDay(zone), windows, intensity, focus, habit, logged,
             ExtraReminders(LocalTime.of(9, 0), azkar = false, muhasabaAt = null, jumuah = false, weekly = false))
 
-    @Test fun strongGivesThreePerPrayerPlusAyah() {
+    @Test fun strongGivesFourPerPrayerPlusAyah() {
         val p = Planner.plan(input(Intensity.STRONG))
-        assertEquals(5 * 3 + 1, p.size)
+        assertEquals(5 * 4 + 1, p.size)
         assertTrue(p.zipWithNext().all { (a, b) -> !a.fireAt.isAfter(b.fireAt) })
     }
 
     @Test fun mediumAndLight() {
-        assertEquals(5 * 2 + 1, Planner.plan(input(Intensity.MEDIUM)).size)
+        assertEquals(5 * 3 + 1, Planner.plan(input(Intensity.MEDIUM)).size)
         assertEquals(5 + 1, Planner.plan(input(Intensity.LIGHT)).size)
     }
 
@@ -154,7 +154,7 @@ class PlannerTest {
         val p = Planner.plan(input(Intensity.STRONG, focus = setOf(Prayer.MAGHRIB), habit = setOf(Prayer.MAGHRIB)))
         assertEquals(5 + 1, p.size)
         val p2 = Planner.plan(input(Intensity.STRONG, focus = setOf(Prayer.MAGHRIB)))
-        assertEquals(3, p2.count { it.prayer == Prayer.MAGHRIB })
+        assertEquals(4, p2.count { it.prayer == Prayer.MAGHRIB })
         assertEquals(1, p2.count { it.prayer == Prayer.FAJR })
     }
 
@@ -210,5 +210,57 @@ class ContentTest {
         assertEquals("ভোর ৪:০৫", Bn.time(LocalTime.of(4, 5)))
         assertEquals("রাত ৮:১৬", Bn.time(LocalTime.of(20, 16)))
         assertEquals("১ ঘণ্টা ৩০ মিনিট", Bn.duration(90))
+    }
+}
+
+class RewardThenLossTest {
+    private val zone = ZoneId.of("Asia/Dhaka")
+    private val dhaka = Location(23.8103, 90.4125, zone)
+    private val d = LocalDate.of(2026, 11, 11)
+    private val windows = mapOf(d to PrayerTimesCalculator.windows(PrayerTimesCalculator.compute(d, dhaka), PrayerTimesCalculator.compute(d.plusDays(1), dhaka)))
+
+    @Test fun lossComesTenMinutesAfterRewardForEveryPrayer() {
+        val p = Planner.plan(PlannerInput(d.atStartOfDay(zone), windows, Intensity.MEDIUM, Prayer.entries.toSet(), emptySet(), emptySet(),
+            ExtraReminders(null, azkar = false, muhasabaAt = null, jumuah = false, weekly = false)))
+        for (pr in Prayer.entries) {
+            val n1 = p.first { it.prayer == pr && it.kind == NotifKind.N1_INVITE }
+            val loss = p.first { it.prayer == pr && it.kind == NotifKind.N1_LOSS }
+            assertEquals(Planner.FOLLOW_UP_MIN, Duration.between(n1.fireAt, loss.fireAt).toMinutes())
+            val n3 = p.first { it.prayer == pr && it.kind == NotifKind.N3_LAST_CALL }
+            assertTrue(loss.fireAt.isBefore(n3.fireAt))
+        }
+    }
+
+    @Test fun lightIntensityHasNoLossFollowUp() {
+        val p = Planner.plan(PlannerInput(d.atStartOfDay(zone), windows, Intensity.LIGHT, Prayer.entries.toSet(), emptySet(), emptySet(),
+            ExtraReminders(null, azkar = false, muhasabaAt = null, jumuah = false, weekly = false)))
+        assertTrue(p.none { it.kind == NotifKind.N1_LOSS })
+    }
+
+    @Test fun loggedPrayerGetsNoLossEither() {
+        val p = Planner.plan(PlannerInput(d.atStartOfDay(zone), windows, Intensity.STRONG, Prayer.entries.toSet(), emptySet(), setOf(d to Prayer.ASR)))
+        assertTrue(p.none { it.prayer == Prayer.ASR })
+    }
+
+    @Test fun extrasGetLossFollowUpsOutsideTheCap() {
+        val p = Planner.plan(PlannerInput(d.atStartOfDay(zone), windows, Intensity.LIGHT, emptySet(), emptySet(), emptySet()))
+        val primaries = p.filter { !it.kind.isPrayer && !it.kind.isLossFollowUp }
+        assertEquals(Planner.MAX_EXTRA_PER_DAY, primaries.size)
+        for ((k, f) in mapOf(NotifKind.AZKAR_MORNING to NotifKind.AZKAR_MORNING_LOSS, NotifKind.MUHASABA to NotifKind.MUHASABA_LOSS)) {
+            val a = p.first { it.kind == k }; val b = p.first { it.kind == f }
+            assertEquals(10, Duration.between(a.fireAt, b.fireAt).toMinutes())
+        }
+        assertTrue(p.none { it.kind.isLossFollowUp && it.kind == NotifKind.N1_LOSS })
+    }
+
+    @Test fun majorItemsComeFirstThenOthers() {
+        fun item(id: String, vararg t: String) = ContentItem(id, t.toList(), "ayah", "r", bn = "b", bnSource = "s", shortBn = "x", tone = "gentle")
+        val items = listOf(item("m1", "salah_virtue", "major"), item("n1", "salah_virtue"), item("n2", "salah_virtue"))
+        assertEquals("m1", ContentPicker.pickMajorFirst(items, listOf("salah_virtue"), emptyMap(), d)!!.id)
+        val seen = mapOf("m1" to d.minusDays(1))
+        val next = ContentPicker.pickMajorFirst(items, listOf("salah_virtue"), seen, d)!!.id
+        assertTrue(next == "n1" || next == "n2")
+        assertEquals(listOf("salah_virtue", "gain_fajr"), ContentPicker.tagsFor(Amal.SALAH, Prayer.FAJR, gain = true))
+        assertEquals(listOf("salah_warning"), ContentPicker.tagsFor(Amal.SALAH, Prayer.DHUHR, gain = false))
     }
 }

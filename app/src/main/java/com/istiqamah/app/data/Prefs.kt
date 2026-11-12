@@ -6,6 +6,7 @@ import com.istiqamah.app.core.AsrMadhab
 import com.istiqamah.app.core.CalcMethod
 import com.istiqamah.app.core.Intensity
 import com.istiqamah.app.core.Location
+import com.istiqamah.app.core.NotifKind
 import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerSettings
 import com.istiqamah.app.core.Stage
@@ -136,7 +137,52 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putBoolean("weekly_on", v).apply()
 
     val extras: com.istiqamah.app.core.ExtraReminders
-        get() = com.istiqamah.app.core.ExtraReminders(dailyAyahAt, azkarReminders, muhasabaAt, jumuahReminders, weeklyReminders)
+        get() = com.istiqamah.app.core.ExtraReminders(
+            dailyAyahAt, azkarReminders, muhasabaAt, jumuahReminders, weeklyReminders,
+            routine = routine, qailulaBeforeDhuhr = qailulaBeforeDhuhr,
+        )
+
+    // ---------- v0.3: সুন্নত দিনলিপি ----------
+    var routine: Set<NotifKind>
+        get() {
+            val raw = sp.getStringSet("routine", null) ?: return NotifKind.ROUTINE_DEFAULT
+            return raw.mapNotNull { n -> NotifKind.entries.firstOrNull { it.name == n && it.isRoutine } }.toSet()
+        }
+        set(v) = sp.edit().putStringSet("routine", v.map { it.name }.toSet()).apply()
+
+    var qailulaBeforeDhuhr: Boolean
+        get() = sp.getBoolean("qailula_before", false)
+        set(v) = sp.edit().putBoolean("qailula_before", v).apply()
+
+    // ---------- v0.3: নোটিফিকেশনের শব্দ ----------
+    var soundMode: SoundMode
+        get() = SoundMode.entries.getOrElse(sp.getInt("sound_mode", 0)) { SoundMode.APP_CHIME }
+        set(v) = sp.edit().putInt("sound_mode", v.ordinal).apply()
+
+    /** নিজের বেছে নেওয়া রিংটোনের URI (SoundMode.CUSTOM) */
+    var customSound: String?
+        get() = sp.getString("custom_sound", null)
+        set(v) = sp.edit().putString("custom_sound", v).apply()
+
+    var customSoundName: String
+        get() = sp.getString("custom_sound_name", "") ?: ""
+        set(v) = sp.edit().putString("custom_sound_name", v).apply()
+
+    var vibrate: Boolean
+        get() = sp.getBoolean("vibrate", true)
+        set(v) = sp.edit().putBoolean("vibrate", v).apply()
+
+    /** আয়াত, আযকার, সুন্নত দিনলিপিতেও শব্দ (না হলে শুধু নামাজের রিমাইন্ডারে) */
+    var soundForOthers: Boolean
+        get() = sp.getBoolean("sound_others", true)
+        set(v) = sp.edit().putBoolean("sound_others", v).apply()
+
+    /**
+     * Android 8+ এ চ্যানেল তৈরির পর তার শব্দ বদলানো যায় না — তাই শব্দ বদলালে নতুন সংস্করণের চ্যানেল বানাই।
+     */
+    var channelVersion: Int
+        get() = sp.getInt("channel_ver", 1)
+        set(v) = sp.edit().putInt("channel_ver", v).apply()
 
     /** গোপন অংশে (গুনাহ ট্র্যাকার, মুহাসাবার ইতিহাস) ঢুকতে ফোনের লক */
     var lockPrivate: Boolean
@@ -155,4 +201,12 @@ class Prefs(context: Context) {
     var batteryGuideSeen: Boolean
         get() = sp.getBoolean("battery_seen", false)
         set(v) = sp.edit().putBoolean("battery_seen", v).apply()
+}
+
+/** নোটিফিকেশনের শব্দ কোথা থেকে */
+enum class SoundMode(val bn: String) {
+    APP_CHIME("অ্যাপের মৃদু \"টুম\" শব্দ"),
+    PHONE_DEFAULT("ফোনের ডিফল্ট নোটিফিকেশন শব্দ"),
+    CUSTOM("নিজের পছন্দের রিংটোন"),
+    SILENT("নীরব (শুধু ভাইব্রেশন)"),
 }

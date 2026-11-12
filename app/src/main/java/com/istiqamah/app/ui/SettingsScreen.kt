@@ -52,7 +52,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.app.Activity
+import android.media.RingtoneManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
 import com.istiqamah.app.BuildConfig
+import com.istiqamah.app.core.ExtraReminders
+import com.istiqamah.app.core.NotifKind
+import com.istiqamah.app.core.Planner
+import com.istiqamah.app.data.SoundMode
+import com.istiqamah.app.notify.Notifier
 import com.istiqamah.app.core.AsrMadhab
 import com.istiqamah.app.core.Bn
 import com.istiqamah.app.core.CalcMethod
@@ -69,6 +79,23 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> U
     // settingsVersion পড়লে সেটিং বদলের পর এই স্ক্রিন আবার আঁকা হয়
     key(vm.settingsVersion) {
         var dialog by remember { mutableStateOf<String?>(null) }
+        /** শব্দ সংক্রান্ত যেকোনো বদলের পর নতুন চ্যানেল + অ্যালার্ম */
+        val soundChanged = { Notifier.applySoundSettings(ctx); vm.settingsChanged() }
+        val ringtonePicker = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+            if (r.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+            val uri: Uri? = if (Build.VERSION.SDK_INT >= 33) {
+                r.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI, Uri::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                r.data?.getParcelableExtra(RingtoneManager.EXTRA_RINGTONE_PICKED_URI)
+            }
+            if (uri != null) {
+                p.customSound = uri.toString()
+                p.customSoundName = runCatching { RingtoneManager.getRingtone(ctx, uri)?.getTitle(ctx) }.getOrNull() ?: ""
+                p.soundMode = SoundMode.CUSTOM
+                soundChanged()
+            }
+        }
         Column(Modifier.fillMaxSize().background(Cream).statusBarsPadding().verticalScroll(rememberScrollState()).padding(16.dp)) {
             Text("সেটিংস", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Emerald800)
             Spacer(Modifier.height(12.dp))
@@ -110,6 +137,67 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> U
                     Engine.scheduleTestAlarm(ctx)
                     Toast.makeText(ctx, "১ মিনিট পরে টেস্ট রিমাইন্ডার আসবে", Toast.LENGTH_LONG).show()
                 }
+            }
+            Spacer(Modifier.height(12.dp))
+            SectionCard {
+                Title("নোটিফিকেশনের শব্দ")
+                Item(
+                    "শব্দ",
+                    if (p.soundMode == SoundMode.CUSTOM && p.customSoundName.isNotBlank()) "${p.soundMode.bn}: ${p.customSoundName}" else p.soundMode.bn,
+                ) { dialog = "sound" }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = {
+                        val uri = Notifier.soundUri(ctx)
+                        if (uri == null) Toast.makeText(ctx, "নীরব মোড — শুধু ভাইব্রেশন হবে", Toast.LENGTH_SHORT).show()
+                        else runCatching { RingtoneManager.getRingtone(ctx, uri)?.play() }
+                    }) { Text("শব্দ শুনুন") }
+                    OutlinedButton(onClick = {
+                        ringtonePicker.launch(
+                            Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                                .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                                .putExtra(RingtoneManager.EXTRA_RINGTONE_TITLE, "নোটিফিকেশনের শব্দ বেছে নিন")
+                                .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                                .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_DEFAULT, true)
+                                .putExtra(RingtoneManager.EXTRA_RINGTONE_EXISTING_URI, p.customSound?.let(Uri::parse))
+                        )
+                    }) { Text("রিংটোন বেছে নিন") }
+                }
+                ToggleRow("ভাইব্রেশন", "নোটিফিকেশনে হালকা কাঁপুনি", p.vibrate) { p.vibrate = it; soundChanged() }
+                ToggleRow("অন্য রিমাইন্ডারেও শব্দ", "আয়াত, আযকার, মুহাসাবা, সুন্নত দিনলিপি — বন্ধ করলে শুধু নামাজে শব্দ", p.soundForOthers) {
+                    p.soundForOthers = it; soundChanged()
+                }
+                Text("ফোন সাইলেন্ট/ডু-নট-ডিস্টার্বে থাকলে শব্দ হবে না।", fontSize = 12.sp, color = Muted)
+            }
+            Spacer(Modifier.height(12.dp))
+            SectionCard {
+                Title("সুন্নত দিনলিপি")
+                Text("নবী ﷺ ও সাহাবিদের দিনের ছন্দ — সময় প্রতিদিন নামাজের সময় থেকে হিসাব হয়।", fontSize = 13.sp, color = Muted, lineHeight = 19.sp)
+                val todayTimes = remember(vm.settingsVersion) {
+                    val today = Engine.today(ctx)
+                    Engine.windows(ctx, today)?.let { w ->
+                        Planner.routineFor(today, w, ExtraReminders(routine = NotifKind.ROUTINE.toSet(), qailulaBeforeDhuhr = p.qailulaBeforeDhuhr))
+                            .associate { it.kind to it.fireAt.toLocalTime() }
+                    } ?: emptyMap()
+                }
+                val labels = mapOf(
+                    NotifKind.BREAKFAST to ("সকালের খাবার" to "সূর্যোদয়ের দেড় ঘণ্টা পরে"),
+                    NotifKind.QAILULA to ("কাইলুলা (দুপুরের বিশ্রাম)" to if (p.qailulaBeforeDhuhr) "যোহরের ১ ঘণ্টা আগে" else "যোহরের ৪৫ মিনিট পরে"),
+                    NotifKind.DINNER to ("রাতের খাবার" to "মাগরিবের ২০ মিনিট পরে, ইশার আগে"),
+                    NotifKind.SLEEP_PREP to ("ঘুমের প্রস্তুতি" to "ইশার পরে, মধ্যরাতের আগে"),
+                    NotifKind.FAST_EVE to ("সোম/বৃহস্পতিবারের রোজা" to "রবি ও বুধবার রাতে মনে করাবে"),
+                    NotifKind.DUHA to ("ইশরাক/দোহা" to "সূর্যোদয়ের ২০ মিনিট পরে"),
+                    NotifKind.TAHAJJUD to ("তাহাজ্জুদ" to "রাতের শেষ তৃতীয়াংশের শুরুতে"),
+                )
+                val enabled = p.routine
+                NotifKind.ROUTINE.forEach { k ->
+                    val (title, rule) = labels.getValue(k)
+                    val time = todayTimes[k]?.let { " · আজ ${Bn.time(it)}" } ?: ""
+                    ToggleRow(title, rule + time, k in enabled) { on ->
+                        p.routine = if (on) p.routine + k else p.routine - k
+                        vm.settingsChanged()
+                    }
+                }
+                Item("কাইলুলার সময়", if (p.qailulaBeforeDhuhr) "যোহরের আগে" else "যোহরের পরে (খাবারের পর)") { dialog = "qailula" }
             }
             Spacer(Modifier.height(12.dp))
             SectionCard {
@@ -169,6 +257,24 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> U
                 p.dailyAyahAt = LocalTime.of(it + 5, 0); vm.settingsChanged()
             }
             "adjust" -> AdjustDialog(vm, close)
+            "sound" -> Choice("নোটিফিকেশনের শব্দ", SoundMode.entries.map { it.bn }, p.soundMode.ordinal, close) {
+                val mode = SoundMode.entries[it]
+                if (mode == SoundMode.CUSTOM && p.customSound == null) {
+                    // আগে রিংটোন বাছাই — বাছাই হলে picker নিজেই মোড বদলাবে
+                    ringtonePicker.launch(
+                        Intent(RingtoneManager.ACTION_RINGTONE_PICKER)
+                            .putExtra(RingtoneManager.EXTRA_RINGTONE_TYPE, RingtoneManager.TYPE_NOTIFICATION)
+                            .putExtra(RingtoneManager.EXTRA_RINGTONE_SHOW_SILENT, false)
+                    )
+                } else {
+                    p.soundMode = mode; soundChanged()
+                }
+            }
+            "qailula" -> Choice(
+                "কাইলুলা কখন?",
+                listOf("যোহরের পরে (খাবারের পর) — কর্মজীবীদের জন্য সহজ", "যোহরের আগে — জুমার দিনের বর্ণনা অনুযায়ী সাহাবিদের সাধারণ অভ্যাস"),
+                if (p.qailulaBeforeDhuhr) 1 else 0, close,
+            ) { p.qailulaBeforeDhuhr = it == 1; vm.settingsChanged() }
         }
     }
 }

@@ -26,7 +26,7 @@ class ExtraRemindersTest {
 
     @Test fun fridayRespectsDailyCapAndDropsAyahFirst() {
         assertEquals(DayOfWeek.FRIDAY, friday.dayOfWeek)
-        val extras = Planner.plan(input(friday)).filter { !it.kind.isPrayer }
+        val extras = Planner.plan(input(friday)).filter { !it.kind.isPrayer && !it.kind.isLossFollowUp }
         assertEquals(Planner.MAX_EXTRA_PER_DAY, extras.size)
         assertTrue(extras.any { it.kind == NotifKind.WEEKLY_REVIEW })
         assertTrue(extras.any { it.kind == NotifKind.JUMUAH_DAY })
@@ -34,7 +34,7 @@ class ExtraRemindersTest {
     }
 
     @Test fun ordinaryDayHasAzkarMuhasabaAndAyah() {
-        val kinds = Planner.plan(input(wednesday)).filter { !it.kind.isPrayer }.map { it.kind }.toSet()
+        val kinds = Planner.plan(input(wednesday)).filter { !it.kind.isPrayer && !it.kind.isLossFollowUp }.map { it.kind }.toSet()
         assertEquals(setOf(NotifKind.DAILY_AYAH, NotifKind.AZKAR_MORNING, NotifKind.AZKAR_EVENING, NotifKind.MUHASABA), kinds)
     }
 
@@ -56,6 +56,8 @@ class ExtraRemindersTest {
         val p = Planner.plan(input(wednesday, late)).first { it.kind == NotifKind.MUHASABA }
         val isha = windows(wednesday).first { it.prayer == Prayer.ISHA }
         assertTrue(p.fireAt.isBefore(isha.end))
+        val pl = Planner.plan(input(wednesday, late)).first { it.kind == NotifKind.MUHASABA_LOSS }
+        assertTrue(pl.fireAt.isBefore(isha.end))
         val early = ExtraReminders(muhasabaAt = LocalTime.of(14, 0))
         val p2 = Planner.plan(input(wednesday, early)).first { it.kind == NotifKind.MUHASABA }
         assertTrue(p2.fireAt.isAfter(isha.start))
@@ -63,7 +65,7 @@ class ExtraRemindersTest {
 
     @Test fun doneThingsAreNotReminded() {
         val p = Planner.plan(input(wednesday, azkarDone = setOf(wednesday to AzkarSet.MORNING), muhasabaDone = setOf(wednesday)))
-        assertTrue(p.none { it.kind == NotifKind.AZKAR_MORNING || it.kind == NotifKind.MUHASABA })
+        assertTrue(p.none { it.kind == NotifKind.AZKAR_MORNING || it.kind == NotifKind.MUHASABA || it.kind == NotifKind.AZKAR_MORNING_LOSS || it.kind == NotifKind.MUHASABA_LOSS })
         assertTrue(p.any { it.kind == NotifKind.AZKAR_EVENING })
     }
 
@@ -238,5 +240,54 @@ class GainLossTest {
         assertTrue(short2.startsWith("পড়লে লাভ"))
         assertTrue(big2.indexOf("✅") < big2.indexOf("⚠️"))
         assertTrue(big2.contains("— ref-g") && big2.contains("— ref-l"))
+    }
+}
+
+class SunnahRoutineTest {
+    private val zone = ZoneId.of("Asia/Dhaka")
+    private val dhaka = Location(23.8103, 90.4125, zone)
+    private fun windows(d: LocalDate) =
+        PrayerTimesCalculator.windows(PrayerTimesCalculator.compute(d, dhaka), PrayerTimesCalculator.compute(d.plusDays(1), dhaka))
+    private val all = ExtraReminders(routine = NotifKind.ROUTINE.toSet())
+    private val wed = LocalDate.of(2026, 11, 11)
+
+    @Test fun timesFollowTheDayInOrder() {
+        val w = windows(wed)
+        val r = Planner.routineFor(wed, w, all).associate { it.kind to it.fireAt }
+        val sunrise = w[0].end
+        assertTrue(r.getValue(NotifKind.DUHA).isAfter(sunrise))
+        assertTrue(r.getValue(NotifKind.BREAKFAST).isAfter(r.getValue(NotifKind.DUHA)))
+        assertTrue(r.getValue(NotifKind.QAILULA).isAfter(w[1].start) && r.getValue(NotifKind.QAILULA).isBefore(w[2].start))
+        assertTrue(w[3].contains(r.getValue(NotifKind.DINNER)))
+        assertTrue(w[4].contains(r.getValue(NotifKind.SLEEP_PREP)))
+        // তাহাজ্জুদ মধ্যরাতের পরে, পরের ফজরের আগে
+        val tahajjud = r.getValue(NotifKind.TAHAJJUD)
+        val nextFajr = windows(wed.plusDays(1))[0].start
+        assertTrue(tahajjud.isAfter(w[4].end) && tahajjud.isBefore(nextFajr))
+        assertNotNull(r[NotifKind.FAST_EVE]) // বুধবার রাত → বৃহস্পতিবারের রোজা
+    }
+
+    @Test fun qailulaCanBeBeforeDhuhr() {
+        val w = windows(wed)
+        val q = Planner.routineFor(wed, w, all.copy(qailulaBeforeDhuhr = true)).first { it.kind == NotifKind.QAILULA }
+        assertTrue(q.fireAt.isBefore(w[1].start))
+    }
+
+    @Test fun fastEveOnlySundayAndWednesday() {
+        val thu = LocalDate.of(2026, 11, 12)
+        assertTrue(Planner.routineFor(thu, windows(thu), all).none { it.kind == NotifKind.FAST_EVE })
+        val sun = LocalDate.of(2026, 11, 15)
+        assertTrue(Planner.routineFor(sun, windows(sun), all).any { it.kind == NotifKind.FAST_EVE })
+    }
+
+    @Test fun disabledItemsAreNotPlannedAndCapIsUnaffected() {
+        val w = windows(wed)
+        assertTrue(Planner.routineFor(wed, w, ExtraReminders()).isEmpty())
+        val only = Planner.routineFor(wed, w, ExtraReminders(routine = setOf(NotifKind.QAILULA)))
+        assertEquals(listOf(NotifKind.QAILULA), only.map { it.kind })
+        val inp = PlannerInput(wed.atStartOfDay(zone), mapOf(wed to w), Intensity.LIGHT, emptySet(), emptySet(), emptySet(), all)
+        val p = Planner.plan(inp)
+        assertEquals(Planner.MAX_EXTRA_PER_DAY, p.count { !it.kind.isPrayer && !it.kind.isLossFollowUp && !it.kind.isRoutine })
+        assertEquals(p.size, p.map { it.id }.toSet().size)
     }
 }
