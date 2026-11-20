@@ -186,12 +186,10 @@ object Notifier {
                 }
                 val pick = ContentPicker.pickAny(items, listOf(tag), seen, today, salt) ?: return
                 store.markSeen(pick.id, today)
-                val left = Duration.between(now, window.end).toMinutes().coerceAtLeast(1)
                 title = t
                 shortText = micro
                 bigText = listOfNotNull(
                     "${pick.shortBn}\n— ${pick.refBn}", hope, "👉 $micro", pledgeLine,
-                    "$name-এর আর ${Bn.duration(left)} বাকি।",
                 ).joinToString("\n\n")
                 opened = pick
             }
@@ -263,7 +261,7 @@ object Notifier {
             b.addAction(0, "পড়েছি ✓", actionIntent(ctx, id * 10 + 1, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.ALONE))
             if (home) {
                 // ঘরে: "পরে" নয় — ছোট্ট প্রথম ধাপ। ১২ মিনিট পরে খোঁজ নেবে।
-                b.addAction(0, "ওযু করতে যাচ্ছি", actionIntent(ctx, id * 10 + 3, ActionReceiver.ACTION_WUDU, date, prayer, kind, null))
+                b.addAction(0, "ওযু করছি", actionIntent(ctx, id * 10 + 3, ActionReceiver.ACTION_WUDU, date, prayer, kind, null))
                 b.addAction(0, "জামাতে পড়েছি", actionIntent(ctx, id * 10 + 2, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.JAMAAH))
             } else {
                 b.addAction(0, "জামাতে পড়েছি", actionIntent(ctx, id * 10 + 2, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.JAMAAH))
@@ -274,6 +272,7 @@ object Notifier {
         if (home && endsAtMillis != null) {
             // ওয়াক্ত শেষ হতে কত বাকি — নোটিফিকেশনেই উল্টো গোনা ঘড়ি
             b.setWhen(endsAtMillis).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
+                .setSubText("ওয়াক্ত শেষ হতে বাকি")
         }
         fullScreen?.let { b.setFullScreenIntent(it, true).setCategory(NotificationCompat.CATEGORY_ALARM) }
         try {
