@@ -39,7 +39,7 @@ private val tabs = listOf(
 
 /**
  * পুরো অ্যাপের মূল: অনবোর্ডিং, নিচের ট্যাব, আর ওপরের পূর্ণ পর্দা।
- * পূর্ণ পর্দার রুট: "azkar:MORNING" · "muhasaba" · "sins" · "weekly" · "battery"
+ * পূর্ণ পর্দার রুট: "azkar:MORNING" · "muhasaba" · "sins" · "weekly" · "battery" · "home" · "keys" · "prime"
  */
 @Composable
 fun App(
@@ -92,6 +92,9 @@ fun App(
         r == "muhasaba" -> MuhasabaScreen(vm, requestUnlock, back)
         r == "sins" -> SinsScreen(vm, back)
         r == "weekly" -> WeeklyScreen(vm, back)
+        r == "home" -> HomeAloneScreen(vm, open, back)
+        r == "keys" -> EaseKeysScreen(onOpenContent = { content = it }, onBack = back)
+        r == "prime" -> PrimeScreen(vm, back)
         else -> Scaffold(
             containerColor = Cream,
             bottomBar = {

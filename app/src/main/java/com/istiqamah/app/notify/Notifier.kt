@@ -29,6 +29,8 @@ import com.istiqamah.app.core.PlannedNotif
 import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
 import com.istiqamah.app.core.Weekly
+import com.istiqamah.app.core.Report
+import com.istiqamah.app.core.Situation
 import com.istiqamah.app.data.AzkarRepo
 import com.istiqamah.app.data.ContentRepo
 import com.istiqamah.app.data.LogStore
@@ -123,6 +125,13 @@ object Notifier {
         // ৩০ দিনের মধ্যে একই আয়াত/হাদিস আবার আসে না; "major" আগে।
         val salt = prayer.ordinal * 3 + kind.ordinal
         val name = prayerName(date, prayer)
+        // v0.4: ঘরে-একা ওয়াক্ত — ছোট প্রথম ধাপ, নিজের ওয়াদা, পুরো পর্দার ডাক, বাকি সময়ের কাউন্টডাউন
+        val prefs = Prefs(ctx)
+        val home = Situation.isHome(window.start, prefs.homeMode)
+        val micro = Situation.microStep(salt + date.dayOfMonth)
+        // "ওযু করতে যাচ্ছি" চাপার পরের ১২ মিনিট নাছোড় ডাক নয় (WUDU_CHECK নিজেই খোঁজ নেবে)
+        if (!isTest && kind.isHomeNudge && System.currentTimeMillis() < prefs.wuduUntil(date, prayer)) return
+        val pledgeLine = prefs.pledge.takeIf { home && it.isNotBlank() }?.let { "🤝 আপনার ওয়াদা: $it" + (prefs.pledgeWhy.takeIf(String::isNotBlank)?.let { w -> "\nকেন: $w" } ?: "") }
         val gainTags = ContentPicker.tagsFor(Amal.SALAH, prayer, gain = true)
         val lossTags = ContentPicker.tagsFor(Amal.SALAH, prayer, gain = false)
         val title: String
@@ -134,9 +143,9 @@ object Notifier {
                 val g = ContentPicker.pickMajorFirst(items, gainTags, seen, today, salt) ?: return
                 store.markSeen(g.id, today)
                 val (sh, body) = g.formatSingle(Amal.SALAH, gain = true)
-                title = "$name-এর সময় হয়েছে"
-                shortText = sh
-                bigText = listOfNotNull(body, qazaLine(ctx, date, prayer)).joinToString("\n\n")
+                title = if (home) "এখন $name — আপনি ঘরে আছেন" else "$name-এর সময় হয়েছে"
+                shortText = if (home) micro else sh
+                bigText = listOfNotNull(if (home) "👉 $micro" else null, body, pledgeLine, qazaLine(ctx, date, prayer)).joinToString("\n\n")
                 opened = g
             }
             NotifKind.N1_LOSS -> {
@@ -144,7 +153,8 @@ object Notifier {
                 store.markSeen(l.id, today)
                 val (sh, body) = l.formatSingle(Amal.SALAH, gain = false, hopeLine = "আল্লাহ ক্ষমাশীল — এখনো সময় আছে, এখনই উঠে দাঁড়ান।")
                 title = "$name এখনো পড়া হয়নি"
-                shortText = sh; bigText = body; opened = l
+                shortText = sh; opened = l
+                bigText = if (home) "$body\n\n👉 $micro" else body
             }
             NotifKind.N2_VIRTUE -> {
                 val g = ContentPicker.pickAny(items, gainTags, seen, today, salt) ?: return
@@ -167,12 +177,50 @@ object Notifier {
                 bigText = body + "\n\nএখনো সময় আছে — উঠে দাঁড়ান, আল্লাহ অপেক্ষা করছেন।"
                 opened = gl.loss ?: gl.gain
             }
+            NotifKind.HOME_NUDGE_1, NotifKind.HOME_NUDGE_2, NotifKind.HOME_NUDGE_3 -> {
+                // ১: একা — কিন্তু আল্লাহ দেখছেন · ২: অলসতা শয়তানের গিঁট · ৩: নামাজ বোঝা নয়, প্রশান্তি
+                val (tag, t, hope) = when (kind) {
+                    NotifKind.HOME_NUDGE_1 -> Triple("alone", "কেউ দেখছে না? আল্লাহ দেখছেন", null)
+                    NotifKind.HOME_NUDGE_2 -> Triple("lazy", "$name — অলসতাকে জিততে দেবেন না", "আল্লাহ ক্ষমাশীল — এখনই উঠলেই হবে।")
+                    else -> Triple("ease", "$name — দুই মিনিটে শুরু, বাকিটা প্রশান্তি", null)
+                }
+                val pick = ContentPicker.pickAny(items, listOf(tag), seen, today, salt) ?: return
+                store.markSeen(pick.id, today)
+                val left = Duration.between(now, window.end).toMinutes().coerceAtLeast(1)
+                title = t
+                shortText = micro
+                bigText = listOfNotNull(
+                    "${pick.shortBn}\n— ${pick.refBn}", hope, "👉 $micro", pledgeLine,
+                    "$name-এর আর ${Bn.duration(left)} বাকি।",
+                ).joinToString("\n\n")
+                opened = pick
+            }
+            NotifKind.WUDU_CHECK -> {
+                val pick = ContentPicker.pickAny(items, listOf("ease"), seen, today, salt)
+                pick?.let { c -> store.markSeen(c.id, today) }
+                title = "ওযু হয়েছে? এবার জায়নামাজে দাঁড়ান"
+                shortText = "\"আল্লাহু আকবার\" বলে শুরু করুন — বাকিটা আপনা-আপনি হবে।"
+                bigText = listOfNotNull(shortText, pick?.let { c -> "${c.shortBn}\n— ${c.refBn}" }).joinToString("\n\n")
+                opened = pick
+            }
             else -> return // নামাজের বাইরের ধরন এখানে আসে না (showExtra)
         }
         // একই ওয়াক্তের আগের নোটিফিকেশন সরিয়ে নতুনটা — ট্রেতে জমে থাকবে না
         cancelFor(ctx, date, prayer)
         val id = PlannedNotif(date, prayer, kind, now).id
-        post(ctx, id, CH_PRAYER, title, if (isTest) "টেস্ট: রিমাইন্ডার ঠিকমতো বাজছে ✓" else shortText, bigText, opened, prayer, date, kind)
+        // শুরু আর শেষ সতর্কতায় (ঘরে থাকলে) অ্যালার্ম-ঘড়ির মতো পুরো পর্দা — লক স্ক্রিনেও
+        val callPi = if (home && prefs.fullScreenCall && (kind == NotifKind.N1_INVITE || kind == NotifKind.N3_LAST_CALL) && canFullScreen(ctx))
+            PrayerCallActivity.pendingIntent(ctx, id, date, prayer, opened?.id) else null
+        post(
+            ctx, id, CH_PRAYER, title, if (isTest) "টেস্ট: রিমাইন্ডার ঠিকমতো বাজছে ✓" else shortText, bigText, opened, prayer, date, kind,
+            home = home, endsAtMillis = window.end.toInstant().toEpochMilli(), fullScreen = callPi,
+        )
+    }
+
+    /** Android 14+ এ পুরো পর্দার ডাকের জন্য আলাদা অনুমতি লাগে (ইউজার সেটিংস থেকে দেন) */
+    fun canFullScreen(ctx: Context): Boolean {
+        if (Build.VERSION.SDK_INT < 34) return true
+        return ctx.getSystemService(NotificationManager::class.java)?.canUseFullScreenIntent() == true
     }
 
     /** শুক্রবার যোহর = জুমা */
@@ -191,6 +239,8 @@ object Notifier {
     private fun post(
         ctx: Context, id: Int, channel: String, title: String, text: String, bigText: String,
         item: ContentItem?, prayer: Prayer?, date: LocalDate, kind: NotifKind? = null, route: String? = null,
+        home: Boolean = false, endsAtMillis: Long? = null, fullScreen: PendingIntent? = null,
+        contentIntent: PendingIntent? = null, extraAction: NotificationCompat.Action? = null,
     ) {
         val openIntent = Intent(ctx, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -202,7 +252,7 @@ object Notifier {
             .setContentTitle(title)
             .setContentText(text)
             .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
-            .setContentIntent(open)
+            .setContentIntent(contentIntent ?: open)
             .setAutoCancel(true)
             .setCategory(if (prayer != null) NotificationCompat.CATEGORY_REMINDER else NotificationCompat.CATEGORY_RECOMMENDATION)
             .setPriority(if (prayer != null) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
@@ -211,9 +261,21 @@ object Notifier {
         if (prayer != null && kind != null) {
             // ইচ্ছা করে "বন্ধ করো" বাটন নেই — শুধু পড়েছি বা একটু পরে
             b.addAction(0, "পড়েছি ✓", actionIntent(ctx, id * 10 + 1, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.ALONE))
-            b.addAction(0, "জামাতে পড়েছি", actionIntent(ctx, id * 10 + 2, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.JAMAAH))
-            b.addAction(0, "১০ মিনিট পরে", actionIntent(ctx, id * 10 + 3, ActionReceiver.ACTION_SNOOZE, date, prayer, kind, null))
+            if (home) {
+                // ঘরে: "পরে" নয় — ছোট্ট প্রথম ধাপ। ১২ মিনিট পরে খোঁজ নেবে।
+                b.addAction(0, "ওযু করতে যাচ্ছি", actionIntent(ctx, id * 10 + 3, ActionReceiver.ACTION_WUDU, date, prayer, kind, null))
+                b.addAction(0, "জামাতে পড়েছি", actionIntent(ctx, id * 10 + 2, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.JAMAAH))
+            } else {
+                b.addAction(0, "জামাতে পড়েছি", actionIntent(ctx, id * 10 + 2, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.JAMAAH))
+                b.addAction(0, "১০ মিনিট পরে", actionIntent(ctx, id * 10 + 3, ActionReceiver.ACTION_SNOOZE, date, prayer, kind, null))
+            }
         }
+        extraAction?.let { b.addAction(it) }
+        if (home && endsAtMillis != null) {
+            // ওয়াক্ত শেষ হতে কত বাকি — নোটিফিকেশনেই উল্টো গোনা ঘড়ি
+            b.setWhen(endsAtMillis).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
+        }
+        fullScreen?.let { b.setFullScreenIntent(it, true).setCategory(NotificationCompat.CATEGORY_ALARM) }
         try {
             NotificationManagerCompat.from(ctx).notify(id, b.build())
         } catch (e: SecurityException) {
@@ -291,6 +353,18 @@ object Notifier {
             }
             NotifKind.BREAKFAST, NotifKind.QAILULA, NotifKind.DINNER, NotifKind.SLEEP_PREP,
             NotifKind.DUHA, NotifKind.TAHAJJUD, NotifKind.FAST_EVE -> routine(ctx, kind, date, id)
+            NotifKind.DAILY_REPORT -> {
+                val prefs = Prefs(ctx)
+                if (prefs.partnerName.isBlank()) return
+                val text = Report.daily(date, store.day(date), prefs.partnerName)
+                val share = sharePendingIntent(ctx, id, text)
+                post(
+                    ctx, id, CH_AYAH, "আজকের হিসাব ${prefs.partnerName}-কে পাঠান",
+                    "জবাবদিহি থাকলে ঘরে একাও অবিচল থাকা সহজ", text, null, null, date,
+                    contentIntent = share,
+                    extraAction = NotificationCompat.Action.Builder(0, "পাঠান", share).build(),
+                )
+            }
             NotifKind.WEEKLY_REVIEW -> {
                 val logs = LogStore.get(ctx).range(date.minusDays(13), date)
                 val r = Weekly.review(logs, date)
@@ -333,6 +407,13 @@ object Notifier {
         val body = listOfNotNull(item?.let { "${it.shortBn}\n— ${it.refBn}" }, tip).joinToString("\n\n")
         post(ctx, id, CH_SUNNAH, title, item?.shortBn ?: tip, body, if (route == null) item else null, null, date, route = route)
     }
+
+    /** জবাবদিহি বন্ধুকে পাঠানোর শেয়ার — হোয়াটসঅ্যাপ/মেসেঞ্জার/SMS যেটা ইউজার বাছাই করেন */
+    fun shareIntent(text: String): Intent =
+        Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, text), "আজকের হিসাব পাঠান")
+
+    private fun sharePendingIntent(ctx: Context, rc: Int, text: String): PendingIntent =
+        PendingIntent.getActivity(ctx, rc, shareIntent(text).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
     private data class Quad(val tag: String, val title: String, val tip: String, val route: String?)
 

@@ -77,6 +77,19 @@ fun AmalScreen(vm: AppVm, open: (String) -> Unit, requestUnlock: (() -> Unit) ->
         Text("নামাজের পরের ধাপ — যিকির, নিজের হিসাব আর গুনাহ ছাড়ার লড়াই", fontSize = 14.sp, color = Muted)
         Spacer(Modifier.height(12.dp))
 
+        // v0.4: ঘরে-একা নামাজ ও নামাজ সহজ করার চাবি
+        SectionCard(Modifier.clickable { open("home") }) {
+            Text("ঘরে-একা নামাজ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+            Text("ছুটির দিন বা অফিসের পরে ঘরে অলসতা লাগে? — পুরো পর্দার ডাক, ওয়াদা, জবাবদিহি বন্ধু, সাদাকার বাক্স",
+                fontSize = 14.sp, color = Muted)
+        }
+        Spacer(Modifier.height(12.dp))
+        SectionCard(Modifier.clickable { open("keys") }) {
+            Text("নামাজ কঠিন লাগে?", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+            Text("\"নিশ্চয়ই তা কঠিন, কিন্তু বিনয়ীদের জন্য নয়\" (২:৪৫) — কুরআন-হাদিসের ৮টি চাবি", fontSize = 14.sp, color = Muted)
+        }
+        Spacer(Modifier.height(12.dp))
+
         SectionCard {
             Text("আযকার", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
             AzkarSet.entries.forEach { s ->
@@ -144,7 +157,7 @@ fun AmalScreen(vm: AppVm, open: (String) -> Unit, requestUnlock: (() -> Unit) ->
 }
 
 @Composable
-private fun ScreenHeader(title: String, subtitle: String? = null, onBack: () -> Unit) {
+internal fun ScreenHeader(title: String, subtitle: String? = null, onBack: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, "ফিরে যান", tint = Emerald800) }
         Column {

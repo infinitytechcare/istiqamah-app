@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.sp
 import com.istiqamah.app.core.Azkar
 import com.istiqamah.app.core.AzkarSet
 import com.istiqamah.app.core.Bn
+import com.istiqamah.app.core.Situation
 import com.istiqamah.app.core.ContentItem
 import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerWindow
@@ -74,6 +75,25 @@ fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, open: (String) -> Un
         }
 
         item { PermissionWarnings(t, onOpenBattery) }
+
+        // v0.4: আজ ঘরে মোড কেমন — এক নজরে, বদলাতে এক ট্যাপ
+        if (vm.prefs.homeModeOn) item {
+            @Suppress("UNUSED_VARIABLE") val v = vm.settingsVersion
+            val cur = vm.currentWindow()
+            val curHome = cur != null && Situation.isHome(cur.start, vm.prefs.homeMode) && t.log.status(cur.prayer) == null
+            Card16 {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { open("home") }) {
+                    Column(Modifier.weight(1f)) {
+                        Text("🏠 ঘরে-একা মোড", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+                        Text(Situation.todayLabel(t.today, vm.prefs.homeMode), fontSize = 14.sp, color = Muted)
+                    }
+                    Text("বদলান ›", fontSize = 14.sp, color = Emerald700)
+                }
+                if (curHome) {
+                    TextButton(onClick = { open("prime") }) { Text("এখন ${t.prayerName(cur!!.prayer)} — ৬০ সেকেন্ডের প্রস্তুতি ›", color = Gold, fontWeight = FontWeight.SemiBold) }
+                }
+            }
+        }
 
         item {
             Card16 {

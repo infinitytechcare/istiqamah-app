@@ -23,6 +23,8 @@ REQUIRED_TAGS = {
     # সুন্নত দিনলিপি (v0.3)
     "sunnah_breakfast": 2, "sunnah_qailula": 1, "sunnah_dinner": 2, "sunnah_sleep": 2,
     "sunnah_duha": 1, "sunnah_tahajjud": 1, "sunnah_fast": 1,
+    # ঘরে-একা মোড ও সহজ করার চাবি (v0.4)
+    "alone": 4, "lazy": 3, "ease": 5, "home": 2, "sadaqah": 1,
 }
 TONES = {"gentle", "encourage", "serious", "hope"}
 MAX_SHORT = 140  # নোটিফিকেশনে এক নজরে পড়ার মতো
@@ -82,6 +84,16 @@ def main() -> int:
         have = sum(1 for it in items if tag in it["tags"])
         if have < n:
             errors.append(f"ট্যাগ '{tag}'-এ {have}টি আইটেম — অন্তত {n}টি লাগবে")
+
+    # ---------- নামাজ সহজ করার চাবি (core/Situation.kt) — আইডিগুলো content.json-এ আছে কিনা ----------
+    import re
+    kt = ROOT / "app" / "src" / "main" / "java" / "com" / "istiqamah" / "app" / "core" / "Situation.kt"
+    if kt.exists():
+        src = kt.read_text(encoding="utf-8")
+        block = src[src.find("object EaseKeys"):src.find("object HomeSetup")]
+        for ref in re.findall(r'"((?:q|h)_[a-z0-9_]+)"', block):
+            if ref not in ids:
+                errors.append(f"EaseKeys: '{ref}' content.json-এ নেই")
 
     # ---------- আযকার ----------
     azkar_path = CONTENT.parent / "azkar.json"

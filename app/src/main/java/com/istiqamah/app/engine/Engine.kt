@@ -21,6 +21,8 @@ import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
 import com.istiqamah.app.core.PrayerTimesCalculator
 import com.istiqamah.app.core.PrayerWindow
+import com.istiqamah.app.core.DayOverride
+import com.istiqamah.app.core.Situation
 import com.istiqamah.app.data.AzkarRepo
 import com.istiqamah.app.data.ContentRepo
 import com.istiqamah.app.data.LogStore
@@ -125,6 +127,7 @@ object Engine {
                 extras = prefs.extras,
                 azkarDone = store.azkarDone(today, today.plusDays(1)),
                 muhasabaDone = store.muhasabaDates(today, today.plusDays(1)),
+                home = Situation.homePrayers(windowsByDate, prefs.homeMode),
             )
         )
         val ids = HashSet<String>()
@@ -188,6 +191,27 @@ object Engine {
             .putExtra(EXTRA_TEST, true)
         val pi = PendingIntent.getBroadcast(ctx, RC_TEST, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         setAlarm(ctx, am, RC_TEST, p.fireAt.toInstant().toEpochMilli(), pi)
+    }
+
+    // ---------- v0.4: ঘরে-একা মোড ----------
+
+    /** এই ওয়াক্তটা কি ঘরে পড়ার কথা (ঘরে মোড চালু থাকলে) */
+    fun isHome(ctx: Context, date: LocalDate, prayer: Prayer): Boolean {
+        val w = windows(ctx, date)?.firstOrNull { it.prayer == prayer } ?: return false
+        return Situation.isHome(w.start, Prefs(ctx).homeMode)
+    }
+
+    /** "ওযু করতে যাচ্ছি" — এখনকার নোটিফিকেশন সরিয়ে ১২ মিনিট পরে খোঁজ */
+    fun wuduGoing(ctx: Context, date: LocalDate, prayer: Prayer) {
+        Notifier.cancelFor(ctx, date, prayer)
+        // এর মধ্যে নাছোড় ডাক এলে বিরক্ত লাগবে — ১২ মিনিট চুপ
+        Prefs(ctx).setWuduUntil(date, prayer, System.currentTimeMillis() + Situation.WUDU_CHECK_MIN * 60_000)
+        snooze(ctx, date, prayer, NotifKind.WUDU_CHECK, Situation.WUDU_CHECK_MIN)
+    }
+
+    fun setDayOverride(ctx: Context, date: LocalDate, o: DayOverride) {
+        Prefs(ctx).setDayOverride(date, o)
+        reschedule(ctx)
     }
 
     // ---------- v0.2: আযকার, মুহাসাবা, গুনাহ ট্র্যাকার ----------

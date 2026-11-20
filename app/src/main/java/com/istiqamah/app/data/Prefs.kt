@@ -11,6 +11,10 @@ import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerSettings
 import com.istiqamah.app.core.Stage
 import com.istiqamah.app.core.StageState
+import com.istiqamah.app.core.DayOverride
+import com.istiqamah.app.core.HomeMode
+import com.istiqamah.app.core.WorkSchedule
+import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
@@ -140,6 +144,7 @@ class Prefs(context: Context) {
         get() = com.istiqamah.app.core.ExtraReminders(
             dailyAyahAt, azkarReminders, muhasabaAt, jumuahReminders, weeklyReminders,
             routine = routine, qailulaBeforeDhuhr = qailulaBeforeDhuhr,
+            dailyReport = dailyReport && partnerName.isNotBlank(),
         )
 
     // ---------- v0.3: সুন্নত দিনলিপি ----------
@@ -197,6 +202,94 @@ class Prefs(context: Context) {
             return d to g
         }
         set(v) = sp.edit().putString("wgoal_date", v?.first?.toString()).putString("wgoal", v?.second).apply()
+
+    // ---------- v0.4: ঘরে-একা মোড ----------
+    var homeModeOn: Boolean
+        get() = sp.getBoolean("home_on", true)
+        set(v) = sp.edit().putBoolean("home_on", v).apply()
+
+    var workEnabled: Boolean
+        get() = sp.getBoolean("work_on", true)
+        set(v) = sp.edit().putBoolean("work_on", v).apply()
+
+    var workDays: Set<DayOfWeek>
+        get() = sp.getStringSet("work_days", null)?.mapNotNull { n -> DayOfWeek.entries.firstOrNull { it.name == n } }?.toSet()
+            ?: WorkSchedule().days
+        set(v) = sp.edit().putStringSet("work_days", v.map { it.name }.toSet()).apply()
+
+    var workStart: LocalTime
+        get() = LocalTime.of(sp.getInt("work_sh", 9), sp.getInt("work_sm", 0))
+        set(v) = sp.edit().putInt("work_sh", v.hour).putInt("work_sm", v.minute).apply()
+
+    var workEnd: LocalTime
+        get() = LocalTime.of(sp.getInt("work_eh", 17), sp.getInt("work_em", 0))
+        set(v) = sp.edit().putInt("work_eh", v.hour).putInt("work_em", v.minute).apply()
+
+    /** "আজ ঘরে/বাইরে" — শুধু সাম্প্রতিক তারিখগুলো রাখি ("2026-11-20:1") */
+    fun dayOverride(d: LocalDate): DayOverride = overrides[d] ?: DayOverride.AUTO
+
+    fun setDayOverride(d: LocalDate, o: DayOverride) {
+        val keep = overrides.filterKeys { !it.isBefore(d.minusDays(3)) && it != d }.toMutableMap()
+        if (o != DayOverride.AUTO) keep[d] = o
+        sp.edit().putStringSet("day_override", keep.map { (k, v) -> "$k:${v.code}" }.toSet()).apply()
+    }
+
+    private val overrides: Map<LocalDate, DayOverride>
+        get() = (sp.getStringSet("day_override", emptySet()) ?: emptySet()).mapNotNull { e ->
+            val d = runCatching { LocalDate.parse(e.substringBefore(':')) }.getOrNull() ?: return@mapNotNull null
+            d to DayOverride.fromCode(e.substringAfter(':').toIntOrNull() ?: 0)
+        }.toMap()
+
+    val homeMode: HomeMode
+        get() = HomeMode(homeModeOn, WorkSchedule(workEnabled, workDays, workStart, workEnd), overrides)
+
+    /** ঘরে-একা ওয়াক্তের শুরু ও শেষ সতর্কতায় অ্যালার্ম-ঘড়ির মতো পুরো পর্দার ডাক */
+    var fullScreenCall: Boolean
+        get() = sp.getBoolean("full_screen", true)
+        set(v) = sp.edit().putBoolean("full_screen", v).apply()
+
+    /** নিজের লেখা ওয়াদা ও "কেন" — ঘরে-একা নোটিফিকেশন আর ডাকের পর্দায় দেখায় */
+    var pledge: String
+        get() = sp.getString("pledge", "") ?: ""
+        set(v) = sp.edit().putString("pledge", v.trim().take(200)).apply()
+
+    var pledgeWhy: String
+        get() = sp.getString("pledge_why", "") ?: ""
+        set(v) = sp.edit().putString("pledge_why", v.trim().take(200)).apply()
+
+    /** জবাবদিহি বন্ধু — শুধু নাম; পাঠানো হয় ইউজারের নিজের হাতে (শেয়ার) */
+    var partnerName: String
+        get() = sp.getString("partner", "") ?: ""
+        set(v) = sp.edit().putString("partner", v.trim().take(40)).apply()
+
+    var dailyReport: Boolean
+        get() = sp.getBoolean("daily_report", true)
+        set(v) = sp.edit().putBoolean("daily_report", v).apply()
+
+    /** সাদাকার বাক্স: প্রতি কাযা/ছুটে যাওয়া ওয়াক্তে কত টাকা (০ = বন্ধ) */
+    var sadaqahPerMiss: Int
+        get() = sp.getInt("sadaqah_per", 0)
+        set(v) = sp.edit().putInt("sadaqah_per", v.coerceIn(0, 100_000)).apply()
+
+    var sadaqahFrom: LocalDate?
+        get() = runCatching { LocalDate.parse(sp.getString("sadaqah_from", "")) }.getOrNull()
+        set(v) = sp.edit().putString("sadaqah_from", v?.toString()).apply()
+
+    var sadaqahPaid: Int
+        get() = sp.getInt("sadaqah_paid", 0)
+        set(v) = sp.edit().putInt("sadaqah_paid", v.coerceAtLeast(0)).apply()
+
+    /** "ওযু করতে যাচ্ছি" চাপার পর এই সময় পর্যন্ত নাছোড় ডাক চুপ (একই দিনের একই ওয়াক্ত) */
+    fun wuduUntil(d: LocalDate, p: Prayer): Long =
+        if (sp.getString("wudu_key", "") == "$d:${p.ordinal}") sp.getLong("wudu_until", 0L) else 0L
+
+    fun setWuduUntil(d: LocalDate, p: Prayer, millis: Long) =
+        sp.edit().putString("wudu_key", "$d:${p.ordinal}").putLong("wudu_until", millis).apply()
+
+    /** ঘরের পরিবেশের চেকলিস্টে কোনগুলোতে টিক */
+    var homeSetupDone: Set<Int>
+        get() = (sp.getStringSet("home_setup", emptySet()) ?: emptySet()).mapNotNull { it.toIntOrNull() }.toSet()
+        set(v) = sp.edit().putStringSet("home_setup", v.map { it.toString() }.toSet()).apply()
 
     var batteryGuideSeen: Boolean
         get() = sp.getBoolean("battery_seen", false)

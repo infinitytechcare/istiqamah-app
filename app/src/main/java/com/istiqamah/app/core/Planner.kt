@@ -59,7 +59,19 @@ enum class NotifKind(val isPrayer: Boolean, val priority: Int) {
     DUHA(false, 2),
     TAHAJJUD(false, 2),
     /** রবিবার ও বুধবার রাতে: আগামীকাল সোম/বৃহস্পতিবারের সুন্নত রোজা */
-    FAST_EVE(false, 2);
+    FAST_EVE(false, 2),
+
+    // ---- v0.4: ঘরে-একা মোড ----
+    /** ক্ষতির নোটিফিকেশনের পর প্রতি ১৫ মিনিটে নাছোড় ডাক (একা থাকলেও আল্লাহ দেখছেন / অলসতা / প্রশান্তি) */
+    HOME_NUDGE_1(true, 0),
+    HOME_NUDGE_2(true, 0),
+    HOME_NUDGE_3(true, 0),
+    /** "ওযু করতে যাচ্ছি" চাপার ১২ মিনিট পরে খোঁজ — Planner বসায় না, অ্যাকশন থেকে বসে */
+    WUDU_CHECK(true, 0),
+    /** ইশার পর জবাবদিহি বন্ধুকে আজকের হিসাব পাঠানোর রিমাইন্ডার */
+    DAILY_REPORT(false, 2);
+
+    val isHomeNudge: Boolean get() = this == HOME_NUDGE_1 || this == HOME_NUDGE_2 || this == HOME_NUDGE_3
 
     val isRoutine: Boolean get() = this in ROUTINE
 
@@ -99,6 +111,8 @@ data class ExtraReminders(
     val routine: Set<NotifKind> = emptySet(),
     /** কাইলুলা যোহরের আগে (true) না পরে (false, ডিফল্ট) */
     val qailulaBeforeDhuhr: Boolean = false,
+    /** v0.4: জবাবদিহি বন্ধুকে দৈনিক হিসাব পাঠানোর রিমাইন্ডার */
+    val dailyReport: Boolean = false,
 )
 
 data class PlannerInput(
@@ -116,6 +130,8 @@ data class PlannerInput(
     val azkarDone: Set<Pair<LocalDate, AzkarSet>> = emptySet(),
     /** কোন দিনের মুহাসাবা হয়ে গেছে */
     val muhasabaDone: Set<LocalDate> = emptySet(),
+    /** v0.4: যে ওয়াক্তগুলো ঘরে পড়ার কথা — [Situation.homePrayers] */
+    val home: Set<Pair<LocalDate, Prayer>> = emptySet(),
 )
 
 object Planner {
@@ -140,7 +156,7 @@ object Planner {
         for ((date, windows) in input.windowsByDate.toSortedMap()) {
             for (w in windows) {
                 if ((date to w.prayer) in input.logged) continue
-                val kinds = kindsFor(w.prayer, input)
+                val kinds = kindsFor(w.prayer, input, date)
                 val n1 = w.start
                 val n3 = w.end.minusMinutes(LAST_CALL_BEFORE_END_MIN)
                 val n2 = w.start.plus(Duration.ofSeconds(w.length.seconds * 4 / 10))
@@ -155,6 +171,11 @@ object Planner {
                             if (Duration.between(n2, n3).toMinutes() >= MIN_GAP_MIN && Duration.between(n1Loss, n2).toMinutes() >= MIN_GAP_MIN) n2 else null
                         NotifKind.N3_LAST_CALL ->
                             if (Duration.between(n1, n3).toMinutes() >= MIN_GAP_MIN) n3 else null
+                        NotifKind.HOME_NUDGE_1, NotifKind.HOME_NUDGE_2, NotifKind.HOME_NUDGE_3 -> {
+                            val i = k.ordinal - NotifKind.HOME_NUDGE_1.ordinal + 1
+                            val at = n1Loss.plusMinutes(Situation.NUDGE_EVERY_MIN * i)
+                            if (Duration.between(at, n3).toMinutes() >= MIN_GAP_MIN) at else null
+                        }
                         else -> null
                     } ?: continue
                     if (at.isAfter(input.now)) out += PlannedNotif(date, w.prayer, k, at)
@@ -162,6 +183,7 @@ object Planner {
             }
             out += extrasFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += routineFor(date, windows, input.extras).filter { it.fireAt.isAfter(input.now) }
+            reportFor(date, windows, input.extras)?.takeIf { it.fireAt.isAfter(input.now) }?.let { out += it }
         }
         return out.sortedBy { it.fireAt }
     }
@@ -252,7 +274,26 @@ object Planner {
         return out
     }
 
-    fun kindsFor(p: Prayer, input: PlannerInput): List<NotifKind> {
+    /**
+     * জবাবদিহির রিমাইন্ডার: ইশা শুরুর ১০০ মিনিট পরে (ততক্ষণে সাধারণত ইশা হয়ে যায়),
+     * কিন্তু ইশার শেষ সীমার ১০ মিনিট আগের পরে নয়।
+     */
+    fun reportFor(date: LocalDate, windows: List<PrayerWindow>, ex: ExtraReminders): PlannedNotif? {
+        if (!ex.dailyReport) return null
+        val isha = windows.first { it.prayer == Prayer.ISHA }
+        val at = minOf(isha.start.plusMinutes(100), isha.end.minusMinutes(10))
+        return PlannedNotif(date, null, NotifKind.DAILY_REPORT, at)
+    }
+
+    fun kindsFor(p: Prayer, input: PlannerInput, date: LocalDate? = null): List<NotifKind> {
+        // ঘরে-একা ওয়াক্ত: তীব্রতা বা অভ্যাস যা-ই হোক, পুরো ডাক — এখানেই অলসতা জেতে
+        if (date != null && (date to p) in input.home) {
+            return listOf(
+                NotifKind.N1_INVITE, NotifKind.N1_LOSS,
+                NotifKind.HOME_NUDGE_1, NotifKind.HOME_NUDGE_2, NotifKind.HOME_NUDGE_3,
+                NotifKind.N3_LAST_CALL,
+            )
+        }
         // ফোকাসের বাইরে বা অভ্যাস হয়ে যাওয়া ওয়াক্ত: শুধু মৃদু আমন্ত্রণ
         if (p !in input.focus || p in input.habitFormed) return listOf(NotifKind.N1_INVITE)
         return when (input.intensity) {

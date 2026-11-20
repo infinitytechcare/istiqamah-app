@@ -47,6 +47,8 @@ class ActionReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_CHECKIN = "com.istiqamah.app.CHECKIN"
         const val ACTION_SNOOZE = "com.istiqamah.app.SNOOZE"
+        /** v0.4: ঘরে — "ওযু করতে যাচ্ছি" (১২ মিনিট পরে খোঁজ) */
+        const val ACTION_WUDU = "com.istiqamah.app.WUDU"
         const val EXTRA_STATUS = "status"
     }
 
@@ -64,6 +66,7 @@ class ActionReceiver : BroadcastReceiver() {
                 NotificationManagerCompat.from(ctx).cancel(PlannedNotif(date, prayer, kind, Engine.now(ctx)).id)
                 work { Engine.snooze(ctx, date, prayer, kind) }
             }
+            ACTION_WUDU -> work { Engine.wuduGoing(ctx, date, prayer) }
         }
     }
 }

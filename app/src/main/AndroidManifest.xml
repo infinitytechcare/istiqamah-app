@@ -9,6 +9,8 @@
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- v0.4: ঘরে-একা ওয়াক্তে অ্যালার্ম-ঘড়ির মতো পুরো পর্দার ডাক (Android 14+ এ ইউজার আলাদা করে অনুমতি দেন) -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
 
     <application
         android:allowBackup="false"
@@ -30,6 +32,14 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".notify.PrayerCallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:screenOrientation="portrait" />
 
         <receiver android:name=".notify.AlarmReceiver" android:exported="false" />
         <receiver android:name=".notify.ActionReceiver" android:exported="false" />
