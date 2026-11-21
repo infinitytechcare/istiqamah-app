@@ -95,6 +95,7 @@ fun App(
         r == "home" -> HomeAloneScreen(vm, open, back)
         r == "keys" -> EaseKeysScreen(onOpenContent = { content = it }, onBack = back)
         r == "prime" -> PrimeScreen(vm, back)
+        r == "jamaat" -> JamaatScreen(vm, back)
         else -> Scaffold(
             containerColor = Cream,
             bottomBar = {
@@ -118,7 +119,7 @@ fun App(
                     0 -> TodayScreen(vm, onOpenContent = { content = it }, open = open)
                     1 -> AmalScreen(vm, open, requestUnlock)
                     2 -> CalendarScreen(vm)
-                    3 -> SettingsScreen(vm, onOpenBattery = { route = "battery" }, requestUnlock = requestUnlock)
+                    3 -> SettingsScreen(vm, onOpenBattery = { route = "battery" }, requestUnlock = requestUnlock, onOpenProfile = { route = "jamaat" })
                 }
             }
         }

@@ -13,8 +13,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // প্রতি রিলিজে versionCode অবশ্যই বাড়াতে হবে, নইলে আপডেট ইনস্টল হবে না
-        versionCode = 6
-        versionName = "0.4.1"
+        versionCode = 7
+        versionName = "0.5.0"
     }
 
     // স্থায়ী চাবি: CI-তে GitHub Secret থেকে আসে। প্রথম রিলিজ থেকেই একই চাবি —

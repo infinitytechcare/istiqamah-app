@@ -41,7 +41,12 @@
   "lazy",
   "ease",
   "home",
-  "sadaqah"
+  "sadaqah",
+  "men",
+  "women",
+  "jamaah",
+  "jamaah_miss",
+  "early"
  ],
  "items": [
   {
@@ -1184,7 +1189,8 @@
    "id": "q_62_9",
    "type": "ayah",
    "tags": [
-    "gain_jumuah"
+    "gain_jumuah",
+    "men"
    ],
    "ref_bn": "সূরা আল-জুমুআ ৬২:৯",
    "ref": {
@@ -1680,7 +1686,9 @@
     "salah_virtue",
     "gain_fajr",
     "gain_isha",
-    "major"
+    "major",
+    "men",
+    "jamaah"
    ],
    "ref_bn": "সহিহ মুসলিম ৬৫৬",
    "ref": null,
@@ -1722,7 +1730,9 @@
    "type": "hadith",
    "tags": [
     "salah_invite",
-    "salah_virtue"
+    "salah_virtue",
+    "men",
+    "jamaah"
    ],
    "ref_bn": "সহিহ বুখারি ৬৪৫, সহিহ মুসলিম ৬৫০",
    "ref": null,
@@ -1992,7 +2002,8 @@
    "type": "hadith",
    "tags": [
     "gain_jumuah",
-    "major"
+    "major",
+    "men"
    ],
    "ref_bn": "সহিহ মুসলিম ৮৫৭",
    "ref": null,
@@ -2011,7 +2022,8 @@
    "type": "hadith",
    "tags": [
     "loss_jumuah",
-    "major"
+    "major",
+    "men"
    ],
    "ref_bn": "সহিহ মুসলিম ৮৬৫",
    "ref": null,
@@ -2029,7 +2041,8 @@
    "id": "h_abudawud_1052",
    "type": "hadith",
    "tags": [
-    "loss_jumuah"
+    "loss_jumuah",
+    "men"
    ],
    "ref_bn": "আবু দাউদ ১০৫২",
    "ref": null,
@@ -2143,7 +2156,9 @@
    "type": "hadith",
    "tags": [
     "salah_virtue",
-    "major"
+    "major",
+    "early",
+    "salah_invite"
    ],
    "ref_bn": "সহিহ বুখারি ৫২৭, সহিহ মুসলিম ৮৫",
    "ref": null,
@@ -2239,7 +2254,9 @@
    "type": "hadith",
    "tags": [
     "gain_fajr",
-    "gain_isha"
+    "gain_isha",
+    "men",
+    "jamaah"
    ],
    "ref_bn": "জামে তিরমিযি ২২৩, আবু দাউদ ৫৬১",
    "ref": null,
@@ -2275,7 +2292,9 @@
    "id": "h_bukhari_662",
    "type": "hadith",
    "tags": [
-    "salah_virtue"
+    "salah_virtue",
+    "men",
+    "jamaah"
    ],
    "ref_bn": "সহিহ বুখারি ৬৬২, সহিহ মুসলিম ৬৬৯",
    "ref": null,
@@ -2486,7 +2505,8 @@
    "type": "hadith",
    "tags": [
     "gain_jumuah",
-    "major"
+    "major",
+    "men"
    ],
    "ref_bn": "আবু দাউদ ৩৪৫, তিরমিযি ৪৯৬",
    "ref": null,
@@ -2504,7 +2524,8 @@
    "id": "h_bukhari_881",
    "type": "hadith",
    "tags": [
-    "gain_jumuah"
+    "gain_jumuah",
+    "men"
    ],
    "ref_bn": "সহিহ বুখারি ৮৮১, সহিহ মুসলিম ৮৫০",
    "ref": null,
@@ -3058,6 +3079,146 @@
    "grading": "হাসান (তিরমিজি)",
    "reviewed_by": null,
    "link": "https://sunnah.com/tirmidhi:1987"
+  },
+  {
+   "id": "h_abudawud_570",
+   "type": "hadith",
+   "tags": [
+    "women",
+    "salah_virtue",
+    "home",
+    "early"
+   ],
+   "ref_bn": "সুনানে আবু দাউদ ৫৭০",
+   "ref": null,
+   "arabic": "",
+   "bn": "রাসূলুল্লাহ ﷺ বলেছেন: নারীর জন্য আঙিনায় নামাজের চেয়ে ঘরের ভেতরে নামাজ উত্তম, আর ঘরের চেয়ে নিজের একান্ত কক্ষে নামাজ আরও উত্তম।",
+   "bn_source": "বাংলা ভাবার্থ (রিভিউ প্রয়োজন)",
+   "short_bn": "নারীর জন্য ঘরের ভেতরে নামাজ উত্তম, আর একান্ত কক্ষে নামাজ আরও উত্তম।",
+   "tone": "gentle",
+   "pair_with": null,
+   "grading": "সহিহ (আলবানি)",
+   "reviewed_by": null,
+   "link": "https://sunnah.com/abudawud:570"
+  },
+  {
+   "id": "h_abudawud_567",
+   "type": "hadith",
+   "tags": [
+    "women",
+    "home"
+   ],
+   "ref_bn": "সুনানে আবু দাউদ ৫৬৭",
+   "ref": null,
+   "arabic": "",
+   "bn": "রাসূলুল্লাহ ﷺ বলেছেন: তোমরা তোমাদের নারীদের মসজিদে যেতে নিষেধ কোরো না; তবে তাদের জন্য তাদের ঘরই উত্তম।",
+   "bn_source": "বাংলা ভাবার্থ (রিভিউ প্রয়োজন)",
+   "short_bn": "নারীদের মসজিদে যেতে নিষেধ কোরো না; তবে তাদের জন্য তাদের ঘরই উত্তম।",
+   "tone": "gentle",
+   "pair_with": null,
+   "grading": "সহিহ (আলবানি)",
+   "reviewed_by": null,
+   "link": "https://sunnah.com/abudawud:567"
+  },
+  {
+   "id": "h_ahmad_27090",
+   "type": "hadith",
+   "tags": [
+    "women",
+    "salah_virtue",
+    "major"
+   ],
+   "ref_bn": "মুসনাদে আহমাদ ২৭০৯০ (ইবনে খুযাইমা ১৬৮৯, ইবনে হিব্বান ২২১৭)",
+   "ref": null,
+   "arabic": "",
+   "bn": "উম্মে হুমাইদ (রা.) নবী ﷺ-এর কাছে এসে বললেন: হে আল্লাহর রাসূল, আমি আপনার সাথে নামাজ পড়তে ভালোবাসি। তিনি বললেন: আমি জানি তুমি আমার সাথে নামাজ পড়তে ভালোবাসো; কিন্তু তোমার ঘরের ভেতরের কক্ষে নামাজ বাইরের কক্ষের চেয়ে উত্তম … আর তোমার মহল্লার মসজিদে নামাজ আমার মসজিদে নামাজের চেয়ে উত্তম। এরপর তিনি ঘরের সবচেয়ে ভেতরের কোণে নামাজের জায়গা বানিয়ে নিলেন এবং আমৃত্যু সেখানেই নামাজ পড়েছেন।",
+   "bn_source": "বাংলা ভাবার্থ (রিভিউ প্রয়োজন)",
+   "short_bn": "নবীজি ﷺ বললেন: জানি তুমি আমার সাথে নামাজ পড়তে ভালোবাসো, কিন্তু তোমার ঘরের ভেতরের নামাজই তোমার জন্য উত্তম।",
+   "tone": "gentle",
+   "pair_with": null,
+   "grading": "হাসান (ইবনে হাজার)",
+   "reviewed_by": null,
+   "link": "https://dorar.net/h/HPjJM6zS"
+  },
+  {
+   "id": "h_muslim_666",
+   "type": "hadith",
+   "tags": [
+    "men",
+    "jamaah",
+    "salah_virtue"
+   ],
+   "ref_bn": "সহিহ মুসলিম ৬৬৬",
+   "ref": null,
+   "arabic": "",
+   "bn": "রাসূলুল্লাহ ﷺ বলেছেন: যে ব্যক্তি নিজের ঘরে পবিত্র হয়ে কোনো ফরজ নামাজ আদায়ের জন্য আল্লাহর কোনো ঘরে (মসজিদে) হেঁটে যায়, তার এক পদক্ষেপে একটি গুনাহ মাফ হয় আর অন্য পদক্ষেপে একটি মর্যাদা বাড়ে।",
+   "bn_source": "বাংলা ভাবার্থ (রিভিউ প্রয়োজন)",
+   "short_bn": "ঘর থেকে ওযু করে মসজিদে হেঁটে গেলে এক পায়ে একটি গুনাহ মাফ, অন্য পায়ে একটি মর্যাদা বৃদ্ধি।",
+   "tone": "encourage",
+   "pair_with": null,
+   "grading": "সহিহ",
+   "reviewed_by": null,
+   "link": "https://sunnah.com/muslim:666"
+  },
+  {
+   "id": "h_muslim_654",
+   "type": "hadith",
+   "tags": [
+    "men",
+    "jamaah_miss",
+    "salah_warning"
+   ],
+   "ref_bn": "সহিহ মুসলিম ৬৫৪",
+   "ref": null,
+   "arabic": "",
+   "bn": "ইবনে মাসউদ (রা.) বলেন: যে চায় আগামীকাল মুসলিম হিসেবে আল্লাহর সাথে সাক্ষাৎ করে আনন্দিত হতে, সে যেন এই নামাজগুলোর প্রতি যত্নবান হয় যেখানে এগুলোর আযান দেওয়া হয়। … তোমরা যদি পিছিয়ে থাকা এই লোকটির মতো নিজ নিজ ঘরে নামাজ পড়ো, তবে তোমাদের নবীর সুন্নত ছেড়ে দিলে; আর নবীর সুন্নত ছেড়ে দিলে পথভ্রষ্ট হয়ে যাবে। আমরা দেখেছি, সুস্পষ্ট মুনাফিক ছাড়া কেউ জামাত থেকে পিছিয়ে থাকত না।",
+   "bn_source": "বাংলা ভাবার্থ (রিভিউ প্রয়োজন)",
+   "short_bn": "ঘরে নামাজ পড়ে মসজিদের জামাত ছেড়ে দিলে নবীর সুন্নত ছেড়ে দেওয়া হয় — আর তাতে পথভ্রষ্ট হওয়ার আশঙ্কা।",
+   "tone": "serious",
+   "pair_with": "hope_mercy",
+   "grading": "সহিহ",
+   "reviewed_by": null,
+   "link": "https://sunnah.com/muslim:654"
+  },
+  {
+   "id": "h_bukhari_644",
+   "type": "hadith",
+   "tags": [
+    "men",
+    "jamaah_miss",
+    "salah_warning"
+   ],
+   "ref_bn": "সহিহ বুখারি ৬৪৪, সহিহ মুসলিম ৬৫১",
+   "ref": null,
+   "arabic": "",
+   "bn": "রাসূলুল্লাহ ﷺ বলেছেন: যাঁর হাতে আমার প্রাণ তাঁর কসম! আমার ইচ্ছা হয় কাঠ জোগাড় করতে বলি, তারপর নামাজের আযান দিতে বলি, তারপর কাউকে ইমামতি করতে বলি, আর আমি গিয়ে (বিনা ওজরে) জামাতে না আসা লোকদের ঘর জ্বালিয়ে দিই।",
+   "bn_source": "বাংলা ভাবার্থ (রিভিউ প্রয়োজন)",
+   "short_bn": "জামাতে না আসা লোকদের ব্যাপারে নবীজি ﷺ বলেছেন: ইচ্ছা হয় গিয়ে তাদের ঘর জ্বালিয়ে দিই।",
+   "tone": "serious",
+   "pair_with": "hope_mercy",
+   "grading": "সহিহ",
+   "reviewed_by": null,
+   "link": "https://sunnah.com/bukhari:644"
+  },
+  {
+   "id": "h_ibnmajah_793",
+   "type": "hadith",
+   "tags": [
+    "men",
+    "jamaah_miss",
+    "salah_warning"
+   ],
+   "ref_bn": "সুনানে ইবনে মাজাহ ৭৯৩",
+   "ref": null,
+   "arabic": "",
+   "bn": "রাসূলুল্লাহ ﷺ বলেছেন: যে আযান শুনল অথচ (জামাতে) এলো না, ওজর ছাড়া তার নামাজ (পূর্ণ) হয় না।",
+   "bn_source": "বাংলা ভাবার্থ (রিভিউ প্রয়োজন)",
+   "short_bn": "আযান শুনেও বিনা ওজরে জামাতে না এলে তার নামাজ (পূর্ণ) হয় না।",
+   "tone": "serious",
+   "pair_with": "hope_mercy",
+   "grading": "সহিহ (আলবানি)",
+   "reviewed_by": null,
+   "link": "https://sunnah.com/ibnmajah:793"
   }
  ]
 }

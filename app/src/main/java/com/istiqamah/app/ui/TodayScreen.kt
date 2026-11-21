@@ -75,6 +75,7 @@ fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, open: (String) -> Un
         }
 
         item { PermissionWarnings(t, onOpenBattery) }
+        item { ProfileTodayCard(vm, open) }
 
         // v0.4: আজ ঘরে মোড কেমন — এক নজরে, বদলাতে এক ট্যাপ
         if (vm.prefs.homeModeOn) item {

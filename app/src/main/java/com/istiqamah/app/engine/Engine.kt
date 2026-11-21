@@ -23,6 +23,9 @@ import com.istiqamah.app.core.PrayerTimesCalculator
 import com.istiqamah.app.core.PrayerWindow
 import com.istiqamah.app.core.DayOverride
 import com.istiqamah.app.core.Situation
+import com.istiqamah.app.core.Gender
+import com.istiqamah.app.core.Jamaat
+import com.istiqamah.app.core.JamaatTime
 import com.istiqamah.app.data.AzkarRepo
 import com.istiqamah.app.data.ContentRepo
 import com.istiqamah.app.data.LogStore
@@ -115,6 +118,7 @@ object Engine {
         val today = now.toLocalDate()
         val dates = listOf(today, today.plusDays(1))
         val windowsByDate = dates.associateWith { windows(ctx, it)!! }
+        markPausedExcused(ctx, prefs, now)
         val recent = logs(ctx, today.minusDays(15), today.plusDays(1))
         val logged = recent.flatMap { (d, log) -> log.statuses.keys.map { d to it } }.toSet()
         val stage = prefs.stageState
@@ -128,6 +132,10 @@ object Engine {
                 azkarDone = store.azkarDone(today, today.plusDays(1)),
                 muhasabaDone = store.muhasabaDates(today, today.plusDays(1)),
                 home = Situation.homePrayers(windowsByDate, prefs.homeMode),
+                jamaat = Jamaat.times(windowsByDate, prefs.gender, prefs.jamaatSettings, prefs.homeMode.schedule),
+                leadMin = prefs.jamaatLead.toLong(),
+                pausedFrom = prefs.pausedFrom,
+                silentRepeat = prefs.silentRepeat,
             )
         )
         val ids = HashSet<String>()
@@ -165,7 +173,7 @@ object Engine {
     /** আজকের আয়াত: দিনে একবার বাছাই করে সংরক্ষণ — হোম ও নোটিফিকেশনে একই */
     fun dailyItem(ctx: Context, date: LocalDate = today(ctx)): ContentItem? {
         val prefs = Prefs(ctx)
-        val items = ContentRepo.all(ctx)
+        val items = ContentRepo.forUser(ctx)
         prefs.dailyPick?.let { (d, id) -> if (d == date) items.firstOrNull { it.id == id }?.let { return it } }
         val store = LogStore.get(ctx)
         val item = ContentPicker.pick(items, "daily", store.seenMap(), date) ?: return null
@@ -191,6 +199,47 @@ object Engine {
             .putExtra(EXTRA_TEST, true)
         val pi = PendingIntent.getBroadcast(ctx, RC_TEST, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         setAlarm(ctx, am, RC_TEST, p.fireAt.toInstant().toEpochMilli(), pi)
+    }
+
+    // ---------- v0.5: জামাত ও বিরতি ----------
+
+    /** (পুরুষ) এই ওয়াক্তের জামাত — অফিস না মসজিদ */
+    fun jamaat(ctx: Context, date: LocalDate, prayer: Prayer): JamaatTime? {
+        val prefs = Prefs(ctx)
+        if (prefs.gender != Gender.MALE || !prefs.jamaatOn) return null
+        val w = windows(ctx, date)?.firstOrNull { it.prayer == prayer } ?: return null
+        return Jamaat.at(w, prefs.jamaatSettings, prefs.homeMode.schedule)
+    }
+
+    fun startPause(ctx: Context, from: LocalDate) {
+        Prefs(ctx).pausedFrom = from
+        for (p in Prayer.entries) Notifier.cancelFor(ctx, from, p)
+        reschedule(ctx)
+    }
+
+    /** বিরতি শেষ: আজকের যে ওয়াক্তগুলো "বিরতি" হিসেবে বসেছিল কিন্তু এখনো চলছে, সেগুলো খুলে দিই */
+    fun endPause(ctx: Context) {
+        val prefs = Prefs(ctx)
+        prefs.pausedFrom = null
+        val now = now(ctx)
+        val today = now.toLocalDate()
+        val store = LogStore.get(ctx)
+        windows(ctx, today)?.filter { it.contains(now) && store.day(today).status(it.prayer) == PrayerStatus.EXCUSED }
+            ?.forEach { store.setStatus(today, it.prayer, null) }
+        reschedule(ctx)
+    }
+
+    /** বিরতিতে যে ওয়াক্ত শুরু হয়ে গেছে আর কিছু লেখা নেই, তা "বিরতি" — স্ট্রিক ভাঙে না */
+    private fun markPausedExcused(ctx: Context, prefs: Prefs, now: java.time.ZonedDateTime) {
+        val from = prefs.pausedFrom ?: return
+        val store = LogStore.get(ctx)
+        var d = maxOf(from, now.toLocalDate().minusDays(15))
+        while (!d.isAfter(now.toLocalDate())) {
+            val log = store.day(d)
+            windows(ctx, d)?.filter { !it.start.isAfter(now) && log.status(it.prayer) == null }
+                ?.forEach { store.setStatus(d, it.prayer, PrayerStatus.EXCUSED) }
+            d = d.plusDays(1)
+        }
     }
 
     // ---------- v0.4: ঘরে-একা মোড ----------

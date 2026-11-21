@@ -30,6 +30,8 @@ import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
 import com.istiqamah.app.core.Weekly
 import com.istiqamah.app.core.Report
+import com.istiqamah.app.core.Gender
+import com.istiqamah.app.core.Pause
 import com.istiqamah.app.core.Situation
 import com.istiqamah.app.data.AzkarRepo
 import com.istiqamah.app.data.ContentRepo
@@ -44,6 +46,8 @@ object Notifier {
     const val CH_PRAYER = "prayer"
     const val CH_AYAH = "ayah"
     const val CH_SUNNAH = "sunnah"
+    /** v0.5: চেক-ইন না করা পর্যন্ত প্রতি ১০ মিনিটে — শব্দ/ভাইব্রেশন ছাড়া */
+    const val CH_SILENT = "silent"
     const val EXTRA_OPEN_CONTENT = "open_content"
     /** নোটিফিকেশন থেকে কোন স্ক্রিন খুলবে: "azkar:MORNING", "muhasaba", "weekly" */
     const val EXTRA_ROUTE = "route"
@@ -66,7 +70,7 @@ object Notifier {
         val v = prefs.channelVersion
         // পুরনো সংস্করণের চ্যানেল মুছে ফেলি (v0.1/v0.2-এর "prayer", "ayah" সহ)
         nm.notificationChannels
-            .filter { c -> listOf(CH_PRAYER, CH_AYAH, CH_SUNNAH).any { c.id == it || c.id.startsWith("${it}_v") } && !c.id.endsWith("_v$v") }
+            .filter { c -> listOf(CH_PRAYER, CH_AYAH, CH_SUNNAH, CH_SILENT).any { c.id == it || c.id.startsWith("${it}_v") } && !c.id.endsWith("_v$v") }
             .forEach { nm.deleteNotificationChannel(it.id) }
         val sound = soundUri(ctx, prefs)
         val attrs = AudioAttributes.Builder()
@@ -86,6 +90,11 @@ object Notifier {
             "দৈনিক আয়াত, সকাল-সন্ধ্যার আযকার, রাতের মুহাসাবা, জুমা", prefs.soundForOthers))
         nm.createNotificationChannel(ch(CH_SUNNAH, "সুন্নত দিনলিপি", NotificationManager.IMPORTANCE_DEFAULT,
             "খাবার, কাইলুলা, ঘুম, দোহা, তাহাজ্জুদ, সুন্নত রোজা", prefs.soundForOthers))
+        nm.createNotificationChannel(NotificationChannel(channelId(ctx, CH_SILENT), "নীরব রিমাইন্ডার", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "চেক-ইন না করা পর্যন্ত প্রতি ১০ মিনিটে, শব্দ ছাড়া"
+            setSound(null, null)
+            enableVibration(false)
+        })
     }
 
     /** শব্দ/ভাইব্রেশনের সেটিং বদলের পর — নতুন সংস্করণের চ্যানেল */
@@ -106,7 +115,7 @@ object Notifier {
         createChannels(ctx)
         val store = LogStore.get(ctx)
         val today = Engine.today(ctx)
-        val items = ContentRepo.all(ctx)
+        val items = ContentRepo.forUser(ctx)
         val seen = store.seenMap()
 
         if (!kind.isPrayer || prayer == null) {
@@ -116,6 +125,8 @@ object Notifier {
 
         // ইতিমধ্যে লগ হয়ে গেলে আর বিরক্ত করব না
         if (!isTest && store.day(date).status(prayer) != null) return
+        // বিরতিতে নামাজ মাফ
+        if (!isTest && Pause.isPaused(date, Prefs(ctx).pausedFrom)) return
 
         val window = Engine.windows(ctx, date)?.firstOrNull { it.prayer == prayer } ?: return
         val now = Engine.now(ctx)
@@ -134,25 +145,61 @@ object Notifier {
         val pledgeLine = prefs.pledge.takeIf { home && it.isNotBlank() }?.let { "🤝 আপনার ওয়াদা: $it" + (prefs.pledgeWhy.takeIf(String::isNotBlank)?.let { w -> "\nকেন: $w" } ?: "") }
         val gainTags = ContentPicker.tagsFor(Amal.SALAH, prayer, gain = true)
         val lossTags = ContentPicker.tagsFor(Amal.SALAH, prayer, gain = false)
+        // v0.5: পুরুষ — জামাতের সময় ধরে; মহিলা — আউয়াল ওয়াক্তে ঘরে
+        val female = prefs.gender == Gender.FEMALE
+        val jam = if (isTest) null else Engine.jamaat(ctx, date, prayer)
+        val jamText = jam?.let { (if (it.office) "অফিসের জামাত " else "জামাত ") + Bn.time(it.at.toLocalTime()) + "-এ" }
+        val evenDay = date.toEpochDay() % 2 == 0L
+        val n1Tags = when {
+            jam != null && evenDay -> listOf("jamaah")
+            female && evenDay -> listOf("women", "early")
+            else -> gainTags
+        }
         val title: String
         val shortText: String
         val bigText: String
         val opened: ContentItem?
         when (kind) {
             NotifKind.N1_INVITE -> {
-                val g = ContentPicker.pickMajorFirst(items, gainTags, seen, today, salt) ?: return
+                val g = ContentPicker.pickMajorFirst(items, n1Tags, seen, today, salt)
+                    ?: ContentPicker.pickMajorFirst(items, gainTags, seen, today, salt) ?: return
                 store.markSeen(g.id, today)
                 val (sh, body) = g.formatSingle(Amal.SALAH, gain = true)
-                title = if (home) "এখন $name — আপনি ঘরে আছেন" else "$name-এর সময় হয়েছে"
-                shortText = if (home) micro else sh
-                bigText = listOfNotNull(if (home) "👉 $micro" else null, body, pledgeLine, qazaLine(ctx, date, prayer)).joinToString("\n\n")
+                val go = jam?.let {
+                    val left = Duration.between(now, it.at).toMinutes().coerceAtLeast(0)
+                    "ওযু করে ${if (it.office) "" else "মসজিদে "}রওনা দিন — জামাতের ${Bn.num(left)} মিনিট বাকি।"
+                }
+                title = when {
+                    jamText != null -> "$name — $jamText"
+                    home -> "এখন $name — আপনি ঘরে আছেন"
+                    female -> "$name-এর সময় হয়েছে — আউয়াল ওয়াক্তে পড়ুন"
+                    else -> "$name-এর সময় হয়েছে"
+                }
+                shortText = go ?: if (home) micro else sh
+                bigText = listOfNotNull(go?.let { "👉 $it" } ?: if (home) "👉 $micro" else null, body, pledgeLine, qazaLine(ctx, date, prayer)).joinToString("\n\n")
+                opened = g
+            }
+            NotifKind.JAMAAT_MISSED -> {
+                val l = ContentPicker.pickAny(items, listOf("jamaah_miss"), seen, today, salt)
+                    ?: ContentPicker.pickMajorFirst(items, lossTags, seen, today, salt) ?: return
+                store.markSeen(l.id, today)
+                val (sh, body) = l.formatSingle(Amal.SALAH, gain = false, hopeLine = "তবু ওয়াক্ত আছে — এখনই পড়ে নিন। পরের ওয়াক্তে একটু আগে রওনা দিন।")
+                title = "$name-এর জামাত ছুটে গেছে"
+                shortText = sh; bigText = body; opened = l
+            }
+            NotifKind.SILENT_REPEAT -> {
+                val g = ContentPicker.pickAny(items, gainTags, seen, today, salt + now.minute)
+                title = "$name এখনো পড়া হয়নি"
+                shortText = micro
+                bigText = listOfNotNull(g?.let { "${it.shortBn}\n— ${it.refBn}" }, "👉 $micro",
+                    "চেক-ইন না করা পর্যন্ত প্রতি ১০ মিনিটে নীরবে মনে করাব।").joinToString("\n\n")
                 opened = g
             }
             NotifKind.N1_LOSS -> {
                 val l = ContentPicker.pickMajorFirst(items, lossTags, seen, today, salt) ?: return
                 store.markSeen(l.id, today)
                 val (sh, body) = l.formatSingle(Amal.SALAH, gain = false, hopeLine = "আল্লাহ ক্ষমাশীল — এখনো সময় আছে, এখনই উঠে দাঁড়ান।")
-                title = "$name এখনো পড়া হয়নি"
+                title = jamText?.let { "$it — এখনো রওনা দেননি?" } ?: "$name এখনো পড়া হয়নি"
                 shortText = sh; opened = l
                 bigText = if (home) "$body\n\n👉 $micro" else body
             }
@@ -209,9 +256,11 @@ object Notifier {
         // শুরু আর শেষ সতর্কতায় (ঘরে থাকলে) অ্যালার্ম-ঘড়ির মতো পুরো পর্দা — লক স্ক্রিনেও
         val callPi = if (home && prefs.fullScreenCall && (kind == NotifKind.N1_INVITE || kind == NotifKind.N3_LAST_CALL) && canFullScreen(ctx))
             PrayerCallActivity.pendingIntent(ctx, id, date, prayer, opened?.id) else null
+        val silent = kind == NotifKind.SILENT_REPEAT
         post(
-            ctx, id, CH_PRAYER, title, if (isTest) "টেস্ট: রিমাইন্ডার ঠিকমতো বাজছে ✓" else shortText, bigText, opened, prayer, date, kind,
+            ctx, id, if (silent) CH_SILENT else CH_PRAYER, title, if (isTest) "টেস্ট: রিমাইন্ডার ঠিকমতো বাজছে ✓" else shortText, bigText, opened, prayer, date, kind,
             home = home, endsAtMillis = window.end.toInstant().toEpochMilli(), fullScreen = callPi,
+            female = female, countdown = home || silent, sticky = silent,
         )
     }
 
@@ -239,6 +288,7 @@ object Notifier {
         item: ContentItem?, prayer: Prayer?, date: LocalDate, kind: NotifKind? = null, route: String? = null,
         home: Boolean = false, endsAtMillis: Long? = null, fullScreen: PendingIntent? = null,
         contentIntent: PendingIntent? = null, extraAction: NotificationCompat.Action? = null,
+        female: Boolean = false, countdown: Boolean = home, sticky: Boolean = false,
     ) {
         val openIntent = Intent(ctx, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -263,13 +313,17 @@ object Notifier {
                 // ঘরে: "পরে" নয় — ছোট্ট প্রথম ধাপ। ১২ মিনিট পরে খোঁজ নেবে।
                 b.addAction(0, "ওযু করছি", actionIntent(ctx, id * 10 + 3, ActionReceiver.ACTION_WUDU, date, prayer, kind, null))
                 b.addAction(0, "জামাতে পড়েছি", actionIntent(ctx, id * 10 + 2, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.JAMAAH))
+            } else if (female) {
+                // মহিলা: জামাতের বাটন নয়
+                b.addAction(0, "১০ মিনিট পরে", actionIntent(ctx, id * 10 + 3, ActionReceiver.ACTION_SNOOZE, date, prayer, kind, null))
             } else {
                 b.addAction(0, "জামাতে পড়েছি", actionIntent(ctx, id * 10 + 2, ActionReceiver.ACTION_CHECKIN, date, prayer, kind, PrayerStatus.JAMAAH))
                 b.addAction(0, "১০ মিনিট পরে", actionIntent(ctx, id * 10 + 3, ActionReceiver.ACTION_SNOOZE, date, prayer, kind, null))
             }
         }
         extraAction?.let { b.addAction(it) }
-        if (home && endsAtMillis != null) {
+        if (sticky) b.setOngoing(true).setOnlyAlertOnce(true).setAutoCancel(false)
+        if (countdown && endsAtMillis != null) {
             // ওয়াক্ত শেষ হতে কত বাকি — নোটিফিকেশনেই উল্টো গোনা ঘড়ি
             b.setWhen(endsAtMillis).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
                 .setSubText("ওয়াক্ত শেষ হতে বাকি")
@@ -291,7 +345,7 @@ object Notifier {
         val id = PlannedNotif(date, null, kind, Engine.now(ctx)).id
         fun simple(title: String, body: String, route: String?) =
             post(ctx, id, CH_AYAH, title, body.lineSequence().first(), body, null, null, date, route = route)
-        val items = ContentRepo.all(ctx)
+        val items = ContentRepo.forUser(ctx)
         val seen = store.seenMap()
         val today = Engine.today(ctx)
         /** একটা পুরস্কার বা ক্ষতি (major আগে) — intro/hope থাকলে শেষে এক লাইন করে */
@@ -352,6 +406,21 @@ object Notifier {
             }
             NotifKind.BREAKFAST, NotifKind.QAILULA, NotifKind.DINNER, NotifKind.SLEEP_PREP,
             NotifKind.DUHA, NotifKind.TAHAJJUD, NotifKind.FAST_EVE -> routine(ctx, kind, date, id)
+            NotifKind.PAUSE_CHECK -> {
+                // কারণ কখনো লেখা হয় না — শুধু "বিরতি"
+                val from = Prefs(ctx).pausedFrom ?: return
+                val n = Pause.dayNumber(date, from)
+                val end = PendingIntent.getBroadcast(
+                    ctx, id * 10 + 1,
+                    Intent(ctx, ActionReceiver::class.java).setAction(ActionReceiver.ACTION_PAUSE_END),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                )
+                post(
+                    ctx, id, CH_AYAH, "বিরতির ${Bn.num(n.toInt())}তম দিন", "শেষ হলে জানান — নামাজের রিমাইন্ডার আবার চালু হবে।",
+                    "শেষ হলে জানান — নামাজের রিমাইন্ডার আবার চালু হবে। এর মধ্যে যিকির ও দোয়া চালু থাকুক।", null, null, date,
+                    extraAction = NotificationCompat.Action.Builder(0, "শেষ হয়েছে", end).build(),
+                )
+            }
             NotifKind.DAILY_REPORT -> {
                 val prefs = Prefs(ctx)
                 if (prefs.partnerName.isBlank()) return
@@ -400,7 +469,7 @@ object Notifier {
                 "নিয়ত করে সাহরির জন্য অ্যালার্ম দিয়ে রাখুন।", null)
             else -> return
         }
-        val items = ContentRepo.all(ctx)
+        val items = ContentRepo.forUser(ctx)
         val item = ContentPicker.pickAny(items, listOf(tag), store.seenMap(), today, kind.ordinal)
         item?.let { store.markSeen(it.id, today) }
         val body = listOfNotNull(item?.let { "${it.shortBn}\n— ${it.refBn}" }, tip).joinToString("\n\n")

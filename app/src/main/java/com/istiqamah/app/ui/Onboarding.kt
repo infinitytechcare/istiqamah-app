@@ -47,13 +47,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.istiqamah.app.core.Bn
+import com.istiqamah.app.core.Gender
 import com.istiqamah.app.core.Intensity
 import com.istiqamah.app.core.Location
 import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.data.Cities
 import java.time.ZoneId
 
-private const val STEPS = 6
+private const val STEPS = 7
 
 @Composable
 fun OnboardingScreen(vm: AppVm) {
@@ -63,6 +64,7 @@ fun OnboardingScreen(vm: AppVm) {
     var avg by remember { mutableIntStateOf(-1) }
     var first by remember { mutableStateOf(Prayer.MAGHRIB) }
     var intensity by remember { mutableStateOf(Intensity.MEDIUM) }
+    var gender by remember { mutableStateOf(Gender.UNSET) }
 
     BackHandler(enabled = step > 0) { step-- }
 
@@ -80,14 +82,20 @@ fun OnboardingScreen(vm: AppVm) {
         Box(Modifier.weight(1f)) {
             when (step) {
                 0 -> Welcome()
-                1 -> LocationStep(place) { p, l -> place = p; loc = l }
-                2 -> Question(
+                1 -> Question(
+                    "আপনি কে?",
+                    "পুরুষদের জন্য মসজিদে জামাত, মহিলাদের জন্য ঘরে আউয়াল ওয়াক্তে নামাজ উত্তম — তাই রিমাইন্ডার আর আয়াত-হাদিস আলাদা হবে। শুধু আপনার ফোনেই থাকবে।",
+                    listOf(Gender.MALE.code to "পুরুষ — মসজিদের জামাত ধরে রিমাইন্ডার", Gender.FEMALE.code to "মহিলা — ওয়াক্তের শুরুতে, ঘরে নামাজ"),
+                    gender.code,
+                ) { gender = Gender.fromCode(it) }
+                2 -> LocationStep(place) { p, l -> place = p; loc = l }
+                3 -> Question(
                     "গত সপ্তাহে দিনে গড়ে কয় ওয়াক্ত নামাজ পড়েছেন?",
                     "সৎভাবে উত্তর দিন — এটা শুধু আপনার ফোনে থাকবে, কেউ দেখবে না। এখান থেকেই আপনার যাত্রা শুরু হবে।",
                     listOf(0 to "এখনো পড়া হয় না", 1 to "১–২ ওয়াক্ত", 3 to "৩–৪ ওয়াক্ত", 5 to "পাঁচ ওয়াক্তই"),
                     avg,
                 ) { avg = it }
-                3 -> if (avg >= 5) {
+                4 -> if (avg >= 5) {
                     Info("মাশাআল্লাহ!", "আপনি ধাপ ৩ (দৃঢ় হওয়া) থেকে শুরু করবেন। লক্ষ্য: পাঁচ ওয়াক্ত সময়মতো, বিশেষ করে ফজর।")
                 } else {
                     Question(
@@ -97,20 +105,20 @@ fun OnboardingScreen(vm: AppVm) {
                         first.ordinal,
                     ) { first = Prayer.fromOrdinal(it) }
                 }
-                4 -> Question(
+                5 -> Question(
                     "কতটা মনে করিয়ে দেব?",
                     "পরে সেটিংস থেকে বদলাতে পারবেন। একটা ওয়াক্ত টানা ১৪ দিন সময়মতো পড়লে সেটার বাড়তি রিমাইন্ডার নিজেই কমে যাবে।",
                     Intensity.entries.map { it.code to "${it.bn} — ${it.desc}" },
                     intensity.code,
                 ) { intensity = Intensity.fromCode(it) }
-                5 -> PermissionStep()
+                6 -> PermissionStep()
             }
         }
-        val canNext = when (step) { 1 -> loc != null; 2 -> avg >= 0; else -> true }
+        val canNext = when (step) { 1 -> gender != Gender.UNSET; 2 -> loc != null; 3 -> avg >= 0; else -> true }
         Button(
             onClick = {
                 if (step < STEPS - 1) step++
-                else loc?.let { vm.finishOnboarding(place, it, avg.coerceAtLeast(0), first, intensity) }
+                else loc?.let { vm.prefs.gender = gender; vm.finishOnboarding(place, it, avg.coerceAtLeast(0), first, intensity) }
             },
             enabled = canNext,
             modifier = Modifier.fillMaxWidth().height(54.dp),

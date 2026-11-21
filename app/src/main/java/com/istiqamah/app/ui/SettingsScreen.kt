@@ -65,6 +65,7 @@ import com.istiqamah.app.data.SoundMode
 import com.istiqamah.app.notify.Notifier
 import com.istiqamah.app.core.AsrMadhab
 import com.istiqamah.app.core.Bn
+import com.istiqamah.app.core.Gender
 import com.istiqamah.app.core.CalcMethod
 import com.istiqamah.app.core.Intensity
 import com.istiqamah.app.core.Location
@@ -73,7 +74,7 @@ import com.istiqamah.app.engine.Engine
 import java.time.LocalTime
 
 @Composable
-fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> Unit) -> Unit) {
+fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> Unit) -> Unit, onOpenProfile: () -> Unit = {}) {
     val ctx = LocalContext.current
     val p = vm.prefs
     // settingsVersion পড়লে সেটিং বদলের পর এই স্ক্রিন আবার আঁকা হয়
@@ -100,6 +101,19 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> U
             Text("সেটিংস", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Emerald800)
             Spacer(Modifier.height(12.dp))
 
+            SectionCard {
+                Title("আমি ও জামাত")
+                Item(
+                    if (p.gender == Gender.UNSET) "পুরুষ না মহিলা — বেছে নিন" else p.gender.bn,
+                    when (p.gender) {
+                        Gender.MALE -> if (p.jamaatOn) "মসজিদ ও অফিসের জামাতের সময় ধরে রিমাইন্ডার" else "জামাতের রিমাইন্ডার বন্ধ"
+                        Gender.FEMALE -> "আউয়াল ওয়াক্তে ঘরে · বিরতি মোড"
+                        Gender.UNSET -> "রিমাইন্ডার ও আয়াত-হাদিস সেই অনুযায়ী হবে"
+                    } + if (p.silentRepeat) " · নীরব রিমাইন্ডার চালু" else "",
+                    onOpenProfile,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
             SectionCard {
                 Title("নামাজের সময়")
                 Item("লোকেশন", p.placeName) { dialog = "location" }

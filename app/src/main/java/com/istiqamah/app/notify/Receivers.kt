@@ -35,6 +35,8 @@ class AlarmReceiver : BroadcastReceiver() {
                 val p = intent.getIntExtra(Engine.EXTRA_PRAYER, -1).takeIf { it in 0..4 }?.let(Prayer::fromOrdinal)
                 val date = runCatching { LocalDate.parse(intent.getStringExtra(Engine.EXTRA_DATE)) }.getOrElse { Engine.today(ctx) }
                 Notifier.showFor(ctx, kind, p, date, isTest = intent.getBooleanExtra(Engine.EXTRA_TEST, false))
+                // নীরব রিমাইন্ডার: পরেরটা বসাতে পুরো হিসাব আবার
+                if (kind == NotifKind.SILENT_REPEAT) Engine.reschedule(ctx)
                 // ওয়াক্ত শুরু হলে উইজেটে "এখন …" দেখাই
                 if (kind.isPrayer) PrayerWidget.updateAll(ctx)
             }
@@ -49,11 +51,18 @@ class ActionReceiver : BroadcastReceiver() {
         const val ACTION_SNOOZE = "com.istiqamah.app.SNOOZE"
         /** v0.4: ঘরে — "ওযু করতে যাচ্ছি" (১২ মিনিট পরে খোঁজ) */
         const val ACTION_WUDU = "com.istiqamah.app.WUDU"
+        /** v0.5: বিরতি শেষ */
+        const val ACTION_PAUSE_END = "com.istiqamah.app.PAUSE_END"
         const val EXTRA_STATUS = "status"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         val ctx = context.applicationContext
+        if (intent.action == ACTION_PAUSE_END) {
+            NotificationManagerCompat.from(ctx).cancel(PlannedNotif(Engine.today(ctx), null, NotifKind.PAUSE_CHECK, Engine.now(ctx)).id)
+            work { Engine.endPause(ctx) }
+            return
+        }
         val prayer = intent.getIntExtra(Engine.EXTRA_PRAYER, -1).takeIf { it in 0..4 }?.let(Prayer::fromOrdinal) ?: return
         val date = runCatching { LocalDate.parse(intent.getStringExtra(Engine.EXTRA_DATE)) }.getOrNull() ?: return
         val kind = runCatching { NotifKind.valueOf(intent.getStringExtra(Engine.EXTRA_KIND) ?: "") }.getOrNull() ?: NotifKind.N1_INVITE

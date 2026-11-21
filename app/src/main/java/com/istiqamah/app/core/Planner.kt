@@ -69,7 +69,15 @@ enum class NotifKind(val isPrayer: Boolean, val priority: Int) {
     /** "ওযু করতে যাচ্ছি" চাপার ১২ মিনিট পরে খোঁজ — Planner বসায় না, অ্যাকশন থেকে বসে */
     WUDU_CHECK(true, 0),
     /** ইশার পর জবাবদিহি বন্ধুকে আজকের হিসাব পাঠানোর রিমাইন্ডার */
-    DAILY_REPORT(false, 2);
+    DAILY_REPORT(false, 2),
+
+    // ---- v0.5 ----
+    /** (পুরুষ) জামাত ছুটে গেছে — তবু ওয়াক্ত আছে */
+    JAMAAT_MISSED(true, 0),
+    /** (ঐচ্ছিক) চেক-ইন না করা পর্যন্ত প্রতি ১০ মিনিটে শব্দ ছাড়া — Planner শুধু পরেরটা বসায় */
+    SILENT_REPEAT(true, 0),
+    /** (মহিলা) বিরতির ৩য় দিন থেকে দিনে একবার: বিরতি শেষ হলে জানান */
+    PAUSE_CHECK(false, 1);
 
     val isHomeNudge: Boolean get() = this == HOME_NUDGE_1 || this == HOME_NUDGE_2 || this == HOME_NUDGE_3
 
@@ -132,6 +140,14 @@ data class PlannerInput(
     val muhasabaDone: Set<LocalDate> = emptySet(),
     /** v0.4: যে ওয়াক্তগুলো ঘরে পড়ার কথা — [Situation.homePrayers] */
     val home: Set<Pair<LocalDate, Prayer>> = emptySet(),
+    /** v0.5: (পুরুষ) জামাতের সময় — [Jamaat.times] */
+    val jamaat: Map<Pair<LocalDate, Prayer>, JamaatTime> = emptyMap(),
+    /** জামাতের কত মিনিট আগে প্রথম ডাক */
+    val leadMin: Long = 15,
+    /** (মহিলা) বিরতি শুরুর তারিখ; null = বিরতি নেই */
+    val pausedFrom: LocalDate? = null,
+    /** চেক-ইন না করা পর্যন্ত প্রতি ১০ মিনিটে নীরব রিমাইন্ডার */
+    val silentRepeat: Boolean = false,
 )
 
 object Planner {
@@ -140,6 +156,10 @@ object Planner {
     const val MAX_EXTRA_PER_DAY = 4
     /** পুরস্কারের নোটিফিকেশনের কত মিনিট পরে ক্ষতির নোটিফিকেশন */
     const val FOLLOW_UP_MIN = 10L
+    /** জামাতের কত মিনিট পরে "জামাত ছুটে গেছে" */
+    const val JAMAAT_MISSED_AFTER_MIN = 15L
+    /** নীরব রিমাইন্ডারের ব্যবধান */
+    const val SILENT_EVERY_MIN = 10L
     private const val MIN_GAP_MIN = 10L
 
     /** কোন নোটিফিকেশনের পরে কোন ক্ষতির নোটিফিকেশন আসে */
@@ -154,13 +174,24 @@ object Planner {
     fun plan(input: PlannerInput): List<PlannedNotif> {
         val out = ArrayList<PlannedNotif>()
         for ((date, windows) in input.windowsByDate.toSortedMap()) {
+            val paused = Pause.isPaused(date, input.pausedFrom)
             for (w in windows) {
+                if (paused) break // বিরতিতে নামাজ মাফ — কোনো নামাজের রিমাইন্ডার নয়
                 if ((date to w.prayer) in input.logged) continue
-                val kinds = kindsFor(w.prayer, input, date)
-                val n1 = w.start
+                val jam = input.jamaat[date to w.prayer]?.at
+                val kinds = kindsFor(w.prayer, input, date).let { ks ->
+                    // জামাত থাকলে আর ক্ষতির ডাক চালু থাকলে: জামাত ছুটে যাওয়ার ডাকও
+                    if (jam != null && NotifKind.N1_LOSS in ks) ks + NotifKind.JAMAAT_MISSED else ks
+                }
+                // পুরুষ: জামাতের lead মিনিট আগে (ওয়াক্ত শুরুর আগে নয়); মহিলা/জামাত নেই: ওয়াক্ত শুরুতে
+                val n1 = jam?.minusMinutes(input.leadMin)?.let { if (it.isBefore(w.start)) w.start else it } ?: w.start
                 val n3 = w.end.minusMinutes(LAST_CALL_BEFORE_END_MIN)
                 val n2 = w.start.plus(Duration.ofSeconds(w.length.seconds * 4 / 10))
                 val n1Loss = n1.plusMinutes(FOLLOW_UP_MIN)
+                val missed = jam?.plusMinutes(JAMAAT_MISSED_AFTER_MIN)
+                // ঘরের নাছোড় ডাক: জামাত থাকলে জামাত-ছুটে-যাওয়ার পর থেকে, নইলে ক্ষতির ডাকের পর থেকে
+                val nudgeBase = missed ?: n1Loss
+                val loud = ArrayList<ZonedDateTime>()
                 for (k in kinds) {
                     val at = when (k) {
                         NotifKind.N1_INVITE -> n1
@@ -173,14 +204,21 @@ object Planner {
                             if (Duration.between(n1, n3).toMinutes() >= MIN_GAP_MIN) n3 else null
                         NotifKind.HOME_NUDGE_1, NotifKind.HOME_NUDGE_2, NotifKind.HOME_NUDGE_3 -> {
                             val i = k.ordinal - NotifKind.HOME_NUDGE_1.ordinal + 1
-                            val at = n1Loss.plusMinutes(Situation.NUDGE_EVERY_MIN * i)
+                            val at = nudgeBase.plusMinutes(Situation.NUDGE_EVERY_MIN * i)
                             if (Duration.between(at, n3).toMinutes() >= MIN_GAP_MIN) at else null
                         }
+                        NotifKind.JAMAAT_MISSED ->
+                            missed?.takeIf { Duration.between(it, n3).toMinutes() >= MIN_GAP_MIN && it.isAfter(n1Loss) }
                         else -> null
                     } ?: continue
+                    loud += at
                     if (at.isAfter(input.now)) out += PlannedNotif(date, w.prayer, k, at)
                 }
+                if (input.silentRepeat) {
+                    nextSilentRepeat(w, n1, loud, input.now)?.let { out += PlannedNotif(date, w.prayer, NotifKind.SILENT_REPEAT, it) }
+                }
             }
+            pauseCheckFor(date, windows, input)?.takeIf { it.fireAt.isAfter(input.now) }?.let { out += it }
             out += extrasFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += routineFor(date, windows, input.extras).filter { it.fireAt.isAfter(input.now) }
             reportFor(date, windows, input.extras)?.takeIf { it.fireAt.isAfter(input.now) }?.let { out += it }
@@ -283,6 +321,30 @@ object Planner {
         val isha = windows.first { it.prayer == Prayer.ISHA }
         val at = minOf(isha.start.plusMinutes(100), isha.end.minusMinutes(10))
         return PlannedNotif(date, null, NotifKind.DAILY_REPORT, at)
+    }
+
+    /**
+     * নীরব রিমাইন্ডারের পরের সময়: প্রথম ডাকের পর প্রতি ১০ মিনিটের ঘর থেকে এখনের পরেরটা।
+     * জোরালো ডাকের ৩ মিনিটের মধ্যে পড়লে বাদ, আর ওয়াক্ত শেষের ২ মিনিট আগ পর্যন্ত।
+     * Planner শুধু পরেরটা বসায়; সেটা বাজলে পুরো হিসাব আবার হয়, তাই পরেরটা বসে যায়।
+     */
+    fun nextSilentRepeat(w: PrayerWindow, n1: ZonedDateTime, loud: List<ZonedDateTime>, now: ZonedDateTime): ZonedDateTime? {
+        var t = n1.plusMinutes(SILENT_EVERY_MIN)
+        val last = w.end.minusMinutes(2)
+        while (!t.isAfter(last)) {
+            val clash = loud.any { Math.abs(Duration.between(it, t).toMinutes()) < 3 }
+            if (t.isAfter(now) && !clash) return t
+            t = t.plusMinutes(SILENT_EVERY_MIN)
+        }
+        return null
+    }
+
+    /** বিরতির ৩য় দিন থেকে যোহরের ৩০ মিনিট পরে একবার — "বিরতি শেষ হলে জানান" */
+    fun pauseCheckFor(date: LocalDate, windows: List<PrayerWindow>, input: PlannerInput): PlannedNotif? {
+        val from = input.pausedFrom ?: return null
+        if (!Pause.isPaused(date, from) || Pause.dayNumber(date, from) < Pause.CHECK_AFTER_DAYS) return null
+        val dhuhr = windows.first { it.prayer == Prayer.DHUHR }
+        return PlannedNotif(date, null, NotifKind.PAUSE_CHECK, dhuhr.start.plusMinutes(30))
     }
 
     fun kindsFor(p: Prayer, input: PlannerInput, date: LocalDate? = null): List<NotifKind> {

@@ -14,6 +14,12 @@ object ContentRepo {
 
     fun byId(context: Context, id: String): ContentItem? = all(context).firstOrNull { it.id == id }
 
+    /** v0.5: ইউজারের জন্য প্রযোজ্য — পুরুষকে মহিলাদের, মহিলাকে জামাত/মসজিদের কন্টেন্ট নয় */
+    fun forUser(context: Context): List<ContentItem> {
+        val g = Prefs(context).gender
+        return all(context).filter { g.allows(it.tags) }
+    }
+
     /** কয়টা আইটেম এখনো আলেমের রিভিউ পায়নি */
     fun unreviewedCount(context: Context): Int = all(context).count { !it.isReviewed }
 

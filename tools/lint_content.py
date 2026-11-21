@@ -25,6 +25,8 @@ REQUIRED_TAGS = {
     "sunnah_duha": 1, "sunnah_tahajjud": 1, "sunnah_fast": 1,
     # ঘরে-একা মোড ও সহজ করার চাবি (v0.4)
     "alone": 4, "lazy": 3, "ease": 5, "home": 2, "sadaqah": 1,
+    # পুরুষ/মহিলা (v0.5)
+    "men": 5, "women": 3, "jamaah": 4, "jamaah_miss": 2, "early": 1,
 }
 TONES = {"gentle", "encourage", "serious", "hope"}
 MAX_SHORT = 140  # নোটিফিকেশনে এক নজরে পড়ার মতো

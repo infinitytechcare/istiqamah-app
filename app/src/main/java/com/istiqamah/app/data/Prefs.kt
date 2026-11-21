@@ -12,6 +12,10 @@ import com.istiqamah.app.core.PrayerSettings
 import com.istiqamah.app.core.Stage
 import com.istiqamah.app.core.StageState
 import com.istiqamah.app.core.DayOverride
+import com.istiqamah.app.core.Gender
+import com.istiqamah.app.core.JamaatMode
+import com.istiqamah.app.core.JamaatRule
+import com.istiqamah.app.core.JamaatSettings
 import com.istiqamah.app.core.HomeMode
 import com.istiqamah.app.core.WorkSchedule
 import java.time.DayOfWeek
@@ -202,6 +206,55 @@ class Prefs(context: Context) {
             return d to g
         }
         set(v) = sp.edit().putString("wgoal_date", v?.first?.toString()).putString("wgoal", v?.second).apply()
+
+    // ---------- v0.5: পুরুষ/মহিলা, জামাত, বিরতি, নীরব রিমাইন্ডার ----------
+    var gender: Gender
+        get() = Gender.fromCode(sp.getInt("gender", 0))
+        set(v) = sp.edit().putInt("gender", v.code).apply()
+
+    var jamaatOn: Boolean
+        get() = sp.getBoolean("jam_on", true)
+        set(v) = sp.edit().putBoolean("jam_on", v).apply()
+
+    fun jamaatRule(p: Prayer): JamaatRule {
+        val def = JamaatSettings.DEFAULT_RULES.getValue(p)
+        if (!sp.contains("jam_mode_${p.name}")) return def
+        val fixed = sp.getInt("jam_fixed_${p.name}", -1).takeIf { it >= 0 }?.let { LocalTime.of(it / 60, it % 60) }
+        return JamaatRule(JamaatMode.fromCode(sp.getInt("jam_mode_${p.name}", 0)), sp.getInt("jam_min_${p.name}", 0), fixed)
+    }
+
+    fun setJamaatRule(p: Prayer, r: JamaatRule) = sp.edit()
+        .putInt("jam_mode_${p.name}", r.mode.code)
+        .putInt("jam_min_${p.name}", r.minutes)
+        .putInt("jam_fixed_${p.name}", r.fixed?.let { it.hour * 60 + it.minute } ?: -1)
+        .apply()
+
+    /** অফিসের জামাত (null = নেই) */
+    var officeDhuhr: LocalTime?
+        get() = sp.getInt("office_dhuhr", 13 * 60 + 15).takeIf { it >= 0 }?.let { LocalTime.of(it / 60, it % 60) }
+        set(v) = sp.edit().putInt("office_dhuhr", v?.let { it.hour * 60 + it.minute } ?: -1).apply()
+
+    var officeAsr: LocalTime?
+        get() = sp.getInt("office_asr", -1).takeIf { it >= 0 }?.let { LocalTime.of(it / 60, it % 60) }
+        set(v) = sp.edit().putInt("office_asr", v?.let { it.hour * 60 + it.minute } ?: -1).apply()
+
+    /** জামাতের কত মিনিট আগে ডাক */
+    var jamaatLead: Int
+        get() = sp.getInt("jam_lead", 15)
+        set(v) = sp.edit().putInt("jam_lead", v.coerceIn(0, 60)).apply()
+
+    val jamaatSettings: JamaatSettings
+        get() = JamaatSettings(jamaatOn, Prayer.entries.associateWith { jamaatRule(it) }, officeDhuhr, officeAsr, jamaatLead)
+
+    /** (মহিলা) বিরতি শুরুর তারিখ; null = নেই */
+    var pausedFrom: LocalDate?
+        get() = if (gender == Gender.FEMALE) runCatching { LocalDate.parse(sp.getString("paused_from", "")) }.getOrNull() else null
+        set(v) = sp.edit().putString("paused_from", v?.toString() ?: "").apply()
+
+    /** চেক-ইন না করা পর্যন্ত প্রতি ১০ মিনিটে নীরব রিমাইন্ডার */
+    var silentRepeat: Boolean
+        get() = sp.getBoolean("silent_repeat", false)
+        set(v) = sp.edit().putBoolean("silent_repeat", v).apply()
 
     // ---------- v0.4: ঘরে-একা মোড ----------
     var homeModeOn: Boolean
