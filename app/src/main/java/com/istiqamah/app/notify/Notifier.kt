@@ -410,6 +410,7 @@ object Notifier {
             NotifKind.DUHA, NotifKind.TAHAJJUD -> routine(ctx, kind, date, id)
             NotifKind.FAST_EVE, NotifKind.SUHOOR, NotifKind.SUHOOR_END, NotifKind.IFTAR, NotifKind.QADR_NIGHT, NotifKind.RAMADAN_EVE ->
                 fasting(ctx, kind, date, id)
+            NotifKind.ZAKAT_SOON, NotifKind.ZAKAT_DAY, NotifKind.SADAQAH_WEEKLY, NotifKind.DHUL_HIJJAH_EVE -> charity(ctx, kind, date, id)
             NotifKind.QURAN_DAILY, NotifKind.QURAN_LOSS -> {
                 val prefs = Prefs(ctx)
                 if (date in prefs.quranDoneDates) return
@@ -552,6 +553,31 @@ object Notifier {
                 post(ctx, id, CH_SUNNAH, "আগামীকাল ${reasons.first().bn}", reasons.joinToString(" · ") { r -> r.bn },
                     body(it, "নিয়ত করে সাহরির জন্য অ্যালার্ম দিয়ে রাখুন।"), it, null, date, route = "fasting")
             }
+            else -> return
+        }
+    }
+
+    /** v0.8: যাকাত, সদকা, জিলহজ — টাকার অঙ্ক নোটিফিকেশনে দেখানো হয় না (লক স্ক্রিন) */
+    private fun charity(ctx: Context, kind: NotifKind, date: LocalDate, id: Int) {
+        val store = LogStore.get(ctx)
+        val today = Engine.today(ctx)
+        val items = ContentRepo.forUser(ctx)
+        val seen = store.seenMap()
+        fun pick(vararg tags: String) = ContentPicker.pickMajorFirst(items, tags.toList(), seen, today, kind.ordinal)?.also { store.markSeen(it.id, today) }
+        fun show(title: String, item: ContentItem?, vararg lines: String, channel: String = CH_AYAH) {
+            val body = listOfNotNull(item?.let { "${it.shortBn}\n— ${it.refBn}" }, *lines).joinToString("\n\n")
+            post(ctx, id, channel, title, item?.shortBn ?: lines.firstOrNull() ?: "", body, item, null, date, route = "zakat")
+        }
+        when (kind) {
+            NotifKind.ZAKAT_SOON -> show("এক সপ্তাহ পরে যাকাতের দিন", pick("gain_zakat"),
+                "সোনা-রুপার আজকের দাম আর নগদ-সঞ্চয়-ঋণ মিলিয়ে হিসাবটা আপডেট করে নিন।")
+            NotifKind.ZAKAT_DAY -> show("আজ যাকাতের দিন", pick("loss_zakat") ?: pick("gain_zakat"),
+                "হিসাব মিলিয়ে হকদারদের কাছে পৌঁছে দিন — দেওয়ার পরে অ্যাপে লিখে রাখুন।", "আল্লাহ সম্পদে বরকত দিন।")
+            NotifKind.SADAQAH_WEEKLY -> show("এ সপ্তাহের গোপন সদকা", pick("sadaqah"),
+                "অল্প হলেও আজ কাউকে দিন — ডান হাত দিলে বাম হাত যেন না জানে।", channel = CH_SUNNAH)
+            NotifKind.DHUL_HIJJAH_EVE -> show("কাল থেকে জিলহজের প্রথম দশ দিন", pick("dhul_hijjah"),
+                "যিকির (তাকবির-তাহলিল-তাহমিদ), নফল রোজা, বিশেষ করে ৯ তারিখ আরাফার রোজা।",
+                "কুরবানির নিয়ত থাকলে চাঁদ ওঠা থেকে কুরবানি পর্যন্ত চুল-নখ কাটবেন না (মুসলিম ১৯৭৭)।")
             else -> return
         }
     }

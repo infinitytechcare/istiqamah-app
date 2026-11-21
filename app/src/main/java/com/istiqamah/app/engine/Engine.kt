@@ -140,7 +140,7 @@ object Engine {
                 pausedFrom = prefs.pausedFrom,
                 silentRepeat = prefs.silentRepeat,
                 quranDone = prefs.quranDoneDates,
-                hijri = (0L..2L).mapNotNull { n -> today.plusDays(n).let { d -> prefs.hijri(d)?.let { d to it } } }.toMap(),
+                hijri = (0L..8L).mapNotNull { n -> today.plusDays(n).let { d -> prefs.hijri(d)?.let { d to it } } }.toMap(),
                 fastLogged = store.fasts(today, today.plusDays(1)).keys,
                 shawwalDone = shawwalDone(ctx, today),
             )

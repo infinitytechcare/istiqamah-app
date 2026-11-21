@@ -89,6 +89,11 @@ fun AmalScreen(vm: AppVm, open: (String) -> Unit, requestUnlock: (() -> Unit) ->
             Text("সাহরি-ইফতার, কদরের রাত, রমজানে খতম, নফল রোজা, কাযা রোজার হিসাব", fontSize = 14.sp, color = Muted)
         }
         Spacer(Modifier.height(12.dp))
+        SectionCard(Modifier.clickable { open("zakat") }) {
+            Text("যাকাত, সদকা ও হজ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+            Text("যাকাতের হিসাব ও বার্ষিক দিন, গোপন সদকা, হজের সঞ্চয় ও প্রস্তুতি", fontSize = 14.sp, color = Muted)
+        }
+        Spacer(Modifier.height(12.dp))
         SectionCard(Modifier.clickable { open("keys") }) {
             Text("নামাজ কঠিন লাগে?", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
             Text("\"নিশ্চয়ই তা কঠিন, কিন্তু বিনয়ীদের জন্য নয়\" (২:৪৫) — কুরআন-হাদিসের ৮টি চাবি", fontSize = 14.sp, color = Muted)

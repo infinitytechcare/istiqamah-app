@@ -16,6 +16,8 @@ import com.istiqamah.app.core.Gender
 import com.istiqamah.app.core.Hijri
 import com.istiqamah.app.core.HijriDay
 import com.istiqamah.app.core.NaflFast
+import com.istiqamah.app.core.NisabBasis
+import com.istiqamah.app.core.ZakatInput
 import com.istiqamah.app.core.QuranGoal
 import com.istiqamah.app.core.QuranIndex
 import com.istiqamah.app.core.QuranUnit
@@ -157,6 +159,7 @@ class Prefs(context: Context) {
             dailyReport = dailyReport && partnerName.isNotBlank(),
             quran = quranOn, quranAt = quranAt,
             fasting = fastingOn, suhoorLeadMin = suhoorLead, nafl = naflFasts,
+            zakatHijri = zakatHijri, sadaqahDay = sadaqahDay, dhulHijjah = dhulHijjahOn,
         )
 
     // ---------- v0.3: সুন্নত দিনলিপি ----------
@@ -214,6 +217,70 @@ class Prefs(context: Context) {
             return d to g
         }
         set(v) = sp.edit().putString("wgoal_date", v?.first?.toString()).putString("wgoal", v?.second).apply()
+
+    // ---------- v0.8: যাকাত, সদকা, হজ (টাকার অঙ্ক Keystore দিয়ে এনক্রিপ্ট করা) ----------
+    private fun secret(key: String): String = Vault.decrypt(sp.getString(key, null))
+    private fun setSecret(key: String, v: String) = sp.edit().putString(key, if (v.isEmpty()) null else Vault.encrypt(v)).apply()
+
+    var zakatInput: ZakatInput
+        get() = runCatching {
+            val o = org.json.JSONObject(secret("zakat_in").ifEmpty { "{}" })
+            ZakatInput(
+                o.optLong("cash"), o.optLong("savings"), o.optDouble("goldBhori", 0.0), o.optLong("goldP"),
+                o.optDouble("silverBhori", 0.0), o.optLong("silverP"), o.optLong("business"), o.optLong("receivable"),
+                o.optLong("investments"), o.optLong("debts"), NisabBasis.fromCode(o.optInt("basis")),
+            )
+        }.getOrDefault(ZakatInput())
+        set(v) = setSecret("zakat_in", org.json.JSONObject().apply {
+            put("cash", v.cash); put("savings", v.savings); put("goldBhori", v.goldBhori); put("goldP", v.goldPricePerBhori)
+            put("silverBhori", v.silverBhori); put("silverP", v.silverPricePerBhori); put("business", v.business)
+            put("receivable", v.receivable); put("investments", v.investments); put("debts", v.debts); put("basis", v.basis.code)
+        }.toString())
+
+    /** যাকাতের বার্ষিক হিজরি তারিখ (মাস, দিন) */
+    var zakatHijri: Pair<Int, Int>?
+        get() = sp.getInt("zakat_hm", 0).takeIf { it in 1..12 }?.let { it to sp.getInt("zakat_hd", 1) }
+        set(v) = sp.edit().putInt("zakat_hm", v?.first ?: 0).putInt("zakat_hd", v?.second ?: 1).apply()
+
+    /** এ বছর যাকাত দেওয়া (টাকা) আর কোন হিজরি বছরের */
+    var zakatPaid: Long
+        get() = secret("zakat_paid").toLongOrNull() ?: 0L
+        set(v) = setSecret("zakat_paid", v.toString())
+
+    var zakatPaidYear: Int
+        get() = sp.getInt("zakat_paid_year", 0)
+        set(v) = sp.edit().putInt("zakat_paid_year", v).apply()
+
+    /** সাপ্তাহিক সদকার দিন (null = বন্ধ) */
+    var sadaqahDay: java.time.DayOfWeek?
+        get() = sp.getInt("sadaqah_dow", 0).takeIf { it in 1..7 }?.let { java.time.DayOfWeek.of(it) }
+        set(v) = sp.edit().putInt("sadaqah_dow", v?.value ?: 0).apply()
+
+    /** সদকার খাতা: "তারিখ:টাকা" — এনক্রিপ্ট করা, শেষ ২০০টি */
+    var sadaqahLog: List<Pair<LocalDate, Long>>
+        get() = secret("sadaqah_log").split(';').mapNotNull { e ->
+            val d = runCatching { LocalDate.parse(e.substringBefore(':')) }.getOrNull() ?: return@mapNotNull null
+            e.substringAfter(':').toLongOrNull()?.let { d to it }
+        }
+        set(v) = setSecret("sadaqah_log", v.takeLast(200).joinToString(";") { "${it.first}:${it.second}" })
+
+    var dhulHijjahOn: Boolean
+        get() = sp.getBoolean("dhul_hijjah", true)
+        set(v) = sp.edit().putBoolean("dhul_hijjah", v).apply()
+
+    // হজ/উমরাহ
+    var hajjIntent: Boolean
+        get() = sp.getBoolean("hajj_intent", false)
+        set(v) = sp.edit().putBoolean("hajj_intent", v).apply()
+
+    /** লক্ষ্য, জমা, মাসে কত — একসাথে এনক্রিপ্ট */
+    var hajjMoney: Triple<Long, Long, Long>
+        get() = secret("hajj_money").split(',').map { it.toLongOrNull() ?: 0L }.let { Triple(it.getOrElse(0) { 0 }, it.getOrElse(1) { 0 }, it.getOrElse(2) { 0 }) }
+        set(v) = setSecret("hajj_money", "${v.first},${v.second},${v.third}")
+
+    var hajjChecklist: Set<Int>
+        get() = (sp.getStringSet("hajj_check", emptySet()) ?: emptySet()).mapNotNull { it.toIntOrNull() }.toSet()
+        set(v) = sp.edit().putStringSet("hajj_check", v.map { it.toString() }.toSet()).apply()
 
     // ---------- v0.7: রোজা ও রমজান ----------
     var fastingOn: Boolean

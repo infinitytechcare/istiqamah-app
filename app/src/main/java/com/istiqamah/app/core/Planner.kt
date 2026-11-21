@@ -95,7 +95,17 @@ enum class NotifKind(val isPrayer: Boolean, val priority: Int) {
     /** (রমজান) শেষ দশকের বেজোড় রাত — লাইলাতুল কদর */
     QADR_NIGHT(false, 1),
     /** কাল থেকে রমজান */
-    RAMADAN_EVE(false, 0);
+    RAMADAN_EVE(false, 0),
+
+    // ---- v0.8: যাকাত, সদকা, জিলহজ ----
+    /** যাকাতের বার্ষিক হিজরি তারিখের ৭ দিন আগে */
+    ZAKAT_SOON(false, 1),
+    /** যাকাতের দিন */
+    ZAKAT_DAY(false, 0),
+    /** সাপ্তাহিক গোপন সদকা */
+    SADAQAH_WEEKLY(false, 2),
+    /** কাল থেকে জিলহজের প্রথম দশ দিন (কুরবানিদাতার চুল-নখ না কাটা) */
+    DHUL_HIJJAH_EVE(false, 1);
 
     val isHomeNudge: Boolean get() = this == HOME_NUDGE_1 || this == HOME_NUDGE_2 || this == HOME_NUDGE_3
 
@@ -147,6 +157,12 @@ data class ExtraReminders(
     val suhoorLeadMin: Int = 45,
     /** কোন নফল রোজাগুলোর আগের রাতে মনে করাবে (FAST_EVE সুন্নত দিনলিপিতে চালু থাকলে) */
     val nafl: Set<NaflFast> = NaflFast.entries.toSet(),
+    /** v0.8: যাকাতের বার্ষিক হিজরি তারিখ (মাস, দিন); null = নেই */
+    val zakatHijri: Pair<Int, Int>? = null,
+    /** সাপ্তাহিক সদকার দিন; null = বন্ধ */
+    val sadaqahDay: DayOfWeek? = null,
+    /** জিলহজের প্রথম দশকের রিমাইন্ডার */
+    val dhulHijjah: Boolean = false,
 )
 
 data class PlannerInput(
@@ -255,6 +271,7 @@ object Planner {
             pauseCheckFor(date, windows, input)?.takeIf { it.fireAt.isAfter(input.now) }?.let { out += it }
             out += quranFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += fastingFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
+            out += charityFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += extrasFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += routineFor(date, windows, input.extras).filter { it.fireAt.isAfter(input.now) }
             reportFor(date, windows, input.extras)?.takeIf { it.fireAt.isAfter(input.now) }?.let { out += it }
@@ -419,6 +436,30 @@ object Planner {
         if (NotifKind.FAST_EVE in ex.routine && tomorrowH?.isRamadan != true) {
             val reasons = Fasting.naflReasons(date.plusDays(1), tomorrowH, input.shawwalDone).filter { it in ex.nafl }
             if (reasons.isNotEmpty()) add(NotifKind.FAST_EVE, isha.start.plusMinutes(30))
+        }
+        return out
+    }
+
+    /**
+     * যাকাত: বার্ষিক হিজরি তারিখের ৭ দিন আগে আর সেদিন (সূর্যোদয়ের ৩ ঘণ্টা পরে)।
+     * সদকা: বাছাই করা বারে আসরের ৩০ মিনিট পরে। জিলহজ: ১ জিলহজের আগের সন্ধ্যায় মাগরিবের ২০ মিনিট পরে।
+     * input.hijri-তে তারিখ+৭ পর্যন্ত থাকা দরকার।
+     */
+    fun charityFor(date: LocalDate, windows: List<PrayerWindow>, input: PlannerInput): List<PlannedNotif> {
+        val ex = input.extras
+        val w = windows.associateBy { it.prayer }
+        val morning = w.getValue(Prayer.FAJR).end.plusHours(3)
+        val out = ArrayList<PlannedNotif>()
+        fun add(k: NotifKind, at: ZonedDateTime) { out += PlannedNotif(date, null, k, at) }
+        ex.zakatHijri?.let { (m, d) ->
+            fun hits(x: LocalDate) = input.hijri[x]?.let { it.month == m && it.day == d } == true
+            if (hits(date)) add(NotifKind.ZAKAT_DAY, morning)
+            if (hits(date.plusDays(7))) add(NotifKind.ZAKAT_SOON, morning)
+        }
+        if (ex.sadaqahDay != null && date.dayOfWeek == ex.sadaqahDay) add(NotifKind.SADAQAH_WEEKLY, w.getValue(Prayer.ASR).start.plusMinutes(30))
+        if (ex.dhulHijjah) {
+            val t = input.hijri[date.plusDays(1)]
+            if (t != null && t.month == 12 && t.day == 1) add(NotifKind.DHUL_HIJJAH_EVE, w.getValue(Prayer.MAGHRIB).start.plusMinutes(20))
         }
         return out
     }

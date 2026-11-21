@@ -43,6 +43,25 @@ def nfc(s: str) -> str:
     return unicodedata.normalize("NFC", s)
 
 
+def load_bn_fixes() -> dict:
+    """tools/quran_bn_fixes.json — ডেটাসেটের ভাঙা বাংলা অক্ষরের হাতে-করা সংশোধন"""
+    f = pathlib.Path(__file__).resolve().parent / "quran_bn_fixes.json"
+    out = {}
+    for s, a, bad, good in json.loads(f.read_text(encoding="utf-8"))["fixes"]:
+        out.setdefault((s, a), []).append((bad, good))
+    return out
+
+
+def fix_bn(fixes: dict, s: int, a: int, text: str) -> str:
+    text = nfc(text)
+    for bad, good in fixes.get((s, a), []):
+        bad, good = nfc(bad), nfc(good)
+        if bad not in text:
+            raise SystemExit(f"সংশোধন মেলেনি: {s}:{a} '{bad}'")
+        text = text.replace(bad, good)
+    return text
+
+
 def meta_lists(path: pathlib.Path) -> dict:
     """HafsLists ফাইল থেকে নামের পরের প্রথম অ্যারের সংখ্যাগুলো পড়া (কোড চালানো ছাড়া)"""
     src = path.read_text(encoding="utf-8")
@@ -67,6 +86,7 @@ def main() -> int:
     a = ap.parse_args()
     quran = json.loads((pathlib.Path(a.quran_dir) / "quran_bn.json").read_text(encoding="utf-8"))
     m = meta_lists(pathlib.Path(a.meta_file))
+    fixes = load_bn_fixes()
 
     # তালিকাগুলোর প্রথমটা ফাঁকা (০) আর শেষটা সীমানা (৬২৩৭) — মাঝেরগুলোই শুরু
     pages, juz, ruku = m["pages"][1:-1], m["juz"][1:-1], m["ruku"][1:-1]
@@ -80,9 +100,12 @@ def main() -> int:
         surahs.append([start, s["total_verses"], SURAH_BN[s["id"] - 1], s["name"], nfc(s["translation"]), 1 if s["type"] == "meccan" else 2])
         for v in s["verses"]:
             ar.append(v["text"])
-            bn.append(nfc(v["translation"]))
+            bn.append(nfc(fix_bn(fixes, s["id"], v["id"], v["translation"])))
             if (s["id"], v["id"]) in KNOWN_BN_ISSUES:
                 issues.append(len(ar))
+    if any("?" in t and re.search(r"\?\d{3,5};", t) for t in bn):
+        print("এখনো ভাঙা অক্ষর আছে — tools/quran_bn_fixes.json দেখুন", file=sys.stderr)
+        return 1
     if len(ar) != 6236:
         print(f"আয়াত {len(ar)}টি, ৬২৩৬ হওয়ার কথা", file=sys.stderr)
         return 1
