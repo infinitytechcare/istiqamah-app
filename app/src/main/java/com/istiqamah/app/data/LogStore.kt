@@ -11,6 +11,7 @@ import com.istiqamah.app.core.SinGoal
 import com.istiqamah.app.core.TriggerTag
 import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.ReadEvent
+import com.istiqamah.app.core.FastStatus
 import com.istiqamah.app.core.PrayerStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -23,7 +24,7 @@ class LogStore private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "istiqamah.db", null, DB_VERSION) {
 
     companion object {
-        private const val DB_VERSION = 3
+        private const val DB_VERSION = 4
 
         @Volatile private var instance: LogStore? = null
         fun get(context: Context): LogStore =
@@ -43,6 +44,12 @@ class LogStore private constructor(context: Context) :
         db.execSQL("CREATE TABLE content_seen(content_id TEXT PRIMARY KEY, shown_on TEXT NOT NULL)")
         createV2(db)
         createV3(db)
+        createV4(db)
+    }
+
+    /** v0.7: রোজার লগ — প্রতিদিন একটা অবস্থা */
+    private fun createV4(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS fast_log(date TEXT PRIMARY KEY, status INTEGER NOT NULL)")
     }
 
     /** v0.6: কুরআন পড়ার লগ — প্রতি বসায় কোন আয়াত থেকে কোন আয়াতের আগ পর্যন্ত */
@@ -83,6 +90,7 @@ class LogStore private constructor(context: Context) :
         // পুরনো ডেটা মুছবেন না — শুধু নতুন টেবিল যোগ
         if (oldVersion < 2) createV2(db)
         if (oldVersion < 3) createV3(db)
+        if (oldVersion < 4) createV4(db)
     }
 
     // ---------- নামাজের লগ ----------
@@ -222,6 +230,32 @@ class LogStore private constructor(context: Context) :
         readableDatabase.rawQuery(
             "SELECT date, from_id, to_id FROM quran_read WHERE date BETWEEN ? AND ? ORDER BY id", arrayOf(from.toString(), to.toString()),
         ).use { c -> while (c.moveToNext()) out += ReadEvent(LocalDate.parse(c.getString(0)), c.getInt(1), c.getInt(2)) }
+        return out
+    }
+
+    // ---------- রোজা ----------
+
+    fun setFast(date: LocalDate, status: FastStatus?) {
+        val db = writableDatabase
+        if (status == null) {
+            db.delete("fast_log", "date=?", arrayOf(date.toString()))
+            return
+        }
+        db.insertWithOnConflict("fast_log", null, ContentValues().apply {
+            put("date", date.toString()); put("status", status.code)
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun fast(date: LocalDate): FastStatus? =
+        readableDatabase.rawQuery("SELECT status FROM fast_log WHERE date=?", arrayOf(date.toString())).use { c ->
+            if (c.moveToFirst()) FastStatus.fromCode(c.getInt(0)) else null
+        }
+
+    fun fasts(from: LocalDate, to: LocalDate): Map<LocalDate, FastStatus> {
+        val out = HashMap<LocalDate, FastStatus>()
+        readableDatabase.rawQuery("SELECT date, status FROM fast_log WHERE date BETWEEN ? AND ?", arrayOf(from.toString(), to.toString())).use { c ->
+            while (c.moveToNext()) FastStatus.fromCode(c.getInt(1))?.let { out[LocalDate.parse(c.getString(0))] = it }
+        }
         return out
     }
 

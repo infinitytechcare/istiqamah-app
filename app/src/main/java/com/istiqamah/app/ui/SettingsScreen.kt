@@ -198,7 +198,7 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> U
                     NotifKind.QAILULA to ("কাইলুলা (দুপুরের বিশ্রাম)" to if (p.qailulaBeforeDhuhr) "যোহরের ১ ঘণ্টা আগে" else "যোহরের ৪৫ মিনিট পরে"),
                     NotifKind.DINNER to ("রাতের খাবার" to "মাগরিবের ২০ মিনিট পরে, ইশার আগে"),
                     NotifKind.SLEEP_PREP to ("ঘুমের প্রস্তুতি" to "ইশার পরে, মধ্যরাতের আগে"),
-                    NotifKind.FAST_EVE to ("সোম/বৃহস্পতিবারের রোজা" to "রবি ও বুধবার রাতে মনে করাবে"),
+                    NotifKind.FAST_EVE to ("নফল রোজা" to "আগের রাতে: সোম-বৃহস্পতি, আইয়ামে বীয, আরাফা, আশুরা, শাওয়াল"),
                     NotifKind.DUHA to ("ইশরাক/দোহা" to "সূর্যোদয়ের ২০ মিনিট পরে"),
                     NotifKind.TAHAJJUD to ("তাহাজ্জুদ" to "রাতের শেষ তৃতীয়াংশের শুরুতে"),
                 )

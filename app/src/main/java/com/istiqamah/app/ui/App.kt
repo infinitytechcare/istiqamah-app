@@ -41,7 +41,7 @@ private val tabs = listOf(
 
 /**
  * পুরো অ্যাপের মূল: অনবোর্ডিং, নিচের ট্যাব, আর ওপরের পূর্ণ পর্দা।
- * পূর্ণ পর্দার রুট: "azkar:MORNING" · "muhasaba" · "sins" · "weekly" · "battery" · "home" · "keys" · "prime" · "jamaat" · "reader[:পৃষ্ঠা]"
+ * পূর্ণ পর্দার রুট: "azkar:MORNING" · "muhasaba" · "sins" · "weekly" · "battery" · "home" · "keys" · "prime" · "jamaat" · "reader[:পৃষ্ঠা]" · "fasting"
  */
 @Composable
 fun App(
@@ -98,6 +98,7 @@ fun App(
         r == "keys" -> EaseKeysScreen(onOpenContent = { content = it }, onBack = back)
         r == "prime" -> PrimeScreen(vm, back)
         r == "jamaat" -> JamaatScreen(vm, back)
+        r == "fasting" -> FastingScreen(vm, back)
         r != null && (r == "reader" || r.startsWith("reader:")) -> QuranReaderScreen(vm, r.removePrefix("reader").removePrefix(":").toIntOrNull(), back)
         else -> Scaffold(
             containerColor = Cream,

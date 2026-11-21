@@ -32,6 +32,8 @@ import com.istiqamah.app.core.Weekly
 import com.istiqamah.app.core.Report
 import com.istiqamah.app.core.Gender
 import com.istiqamah.app.core.Pause
+import com.istiqamah.app.core.Fasting
+import com.istiqamah.app.core.NaflFast
 import com.istiqamah.app.core.Situation
 import com.istiqamah.app.data.AzkarRepo
 import com.istiqamah.app.data.ContentRepo
@@ -405,7 +407,9 @@ object Notifier {
                     hope = "এখনই প্রস্তুতি নিন — আগে গেলে বেশি সওয়াব।")
             }
             NotifKind.BREAKFAST, NotifKind.QAILULA, NotifKind.DINNER, NotifKind.SLEEP_PREP,
-            NotifKind.DUHA, NotifKind.TAHAJJUD, NotifKind.FAST_EVE -> routine(ctx, kind, date, id)
+            NotifKind.DUHA, NotifKind.TAHAJJUD -> routine(ctx, kind, date, id)
+            NotifKind.FAST_EVE, NotifKind.SUHOOR, NotifKind.SUHOOR_END, NotifKind.IFTAR, NotifKind.QADR_NIGHT, NotifKind.RAMADAN_EVE ->
+                fasting(ctx, kind, date, id)
             NotifKind.QURAN_DAILY, NotifKind.QURAN_LOSS -> {
                 val prefs = Prefs(ctx)
                 if (date in prefs.quranDoneDates) return
@@ -465,7 +469,6 @@ object Notifier {
     private fun routine(ctx: Context, kind: NotifKind, date: LocalDate, id: Int) {
         val store = LogStore.get(ctx)
         val today = Engine.today(ctx)
-        val tomorrowName = if (date.dayOfWeek == java.time.DayOfWeek.SUNDAY) "সোমবার" else "বৃহস্পতিবার"
         val (tag, title, tip, route) = when (kind) {
             NotifKind.BREAKFAST -> Quad("sunnah_breakfast", "সকালের খাবারের সময়",
                 "বিসমিল্লাহ বলে ডান হাতে খান, পেট ভরে নয় — শেষে আলহামদুলিল্লাহ।", null)
@@ -479,8 +482,6 @@ object Notifier {
                 "সূর্য উঠে গেছে — দুই রাকাত নফল পড়ে নিন।", null)
             NotifKind.TAHAJJUD -> Quad("sunnah_tahajjud", "তাহাজ্জুদের সময় — রাতের শেষ তৃতীয়াংশ",
                 "ওযু করে দুই রাকাত হলেও পড়ুন, তারপর যা চাওয়ার চেয়ে নিন।", null)
-            NotifKind.FAST_EVE -> Quad("sunnah_fast", "আগামীকাল $tomorrowName — সুন্নত রোজা",
-                "নিয়ত করে সাহরির জন্য অ্যালার্ম দিয়ে রাখুন।", null)
             else -> return
         }
         val items = ContentRepo.forUser(ctx)
@@ -488,6 +489,71 @@ object Notifier {
         item?.let { store.markSeen(it.id, today) }
         val body = listOfNotNull(item?.let { "${it.shortBn}\n— ${it.refBn}" }, tip).joinToString("\n\n")
         post(ctx, id, CH_SUNNAH, title, item?.shortBn ?: tip, body, if (route == null) item else null, null, date, route = route)
+    }
+
+    /** v0.7: রোজা ও রমজানের নোটিফিকেশন — সময় দেখায়, কারণ লেখে, ইফতারে "রোজা রেখেছি" বাটন */
+    private fun fasting(ctx: Context, kind: NotifKind, date: LocalDate, id: Int) {
+        val prefs = Prefs(ctx)
+        val store = LogStore.get(ctx)
+        val today = Engine.today(ctx)
+        val items = ContentRepo.forUser(ctx)
+        val seen = store.seenMap()
+        val w = Engine.windows(ctx, date)?.associateBy { it.prayer } ?: return
+        val h = prefs.hijri(date)
+        fun pick(vararg tags: String) = ContentPicker.pickMajorFirst(items, tags.toList(), seen, today, kind.ordinal)?.also { store.markSeen(it.id, today) }
+        fun body(item: ContentItem?, vararg lines: String?) =
+            listOfNotNull(item?.let { (if (it.arabic.isNotBlank() && it.type == "hadith") "${it.arabic}\n" else "") + "${it.shortBn}\n— ${it.refBn}" }, *lines)
+                .joinToString("\n\n")
+        val fajr = w.getValue(Prayer.FAJR).start
+        val maghrib = w.getValue(Prayer.MAGHRIB).start
+        when (kind) {
+            NotifKind.SUHOOR -> {
+                val it = pick("suhoor")
+                post(ctx, id, CH_AYAH, "সাহরির সময় — শেষ ${Bn.time(fajr.toLocalTime())}", "সাহরি খান, সাহরিতে বরকত আছে।",
+                    body(it, "রমজানের ${Bn.num(h?.day ?: 0)}তম রোজার সাহরি। খেয়ে রোজার নিয়ত করুন।"), it, null, date, route = "fasting")
+            }
+            NotifKind.SUHOOR_END -> post(ctx, id, CH_AYAH, "সাহরি শেষ হতে ১০ মিনিট", "শেষ সময় ${Bn.time(fajr.toLocalTime())} — পানি খেয়ে নিন।",
+                "শেষ সময় ${Bn.time(fajr.toLocalTime())} — পানি খেয়ে নিন, নিয়ত করুন। তারপর ফজর।", null, null, date, route = "fasting")
+            NotifKind.IFTAR -> {
+                if (store.fast(date) != null) return
+                val it = pick("iftar")
+                val done = PendingIntent.getBroadcast(
+                    ctx, id * 10 + 1,
+                    Intent(ctx, ActionReceiver::class.java).setAction(ActionReceiver.ACTION_FAST_DONE).putExtra(Engine.EXTRA_DATE, date.toString()),
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                )
+                post(ctx, id, CH_AYAH, "ইফতারের ১০ মিনিট বাকি — ${Bn.time(maghrib.toLocalTime())}", it?.shortBn ?: "সময় হলেই দেরি না করে ইফতার করুন।",
+                    body(it, "ইফতারের আগের মুহূর্ত দোয়ার সময় — নিজের, পরিবারের আর উম্মাহর জন্য চেয়ে নিন।"), it, null, date, route = "fasting",
+                    extraAction = NotificationCompat.Action.Builder(0, "রোজা রেখেছি ✓", done).build())
+            }
+            NotifKind.QADR_NIGHT -> {
+                val it = pick("qadr")
+                val night = (h?.day ?: 20) + 1
+                post(ctx, id, CH_AYAH, "আজ রমজানের ${Bn.num(night)}তম রাত — হতে পারে লাইলাতুল কদর", it?.shortBn ?: "হাজার মাসের চেয়ে উত্তম রাত।",
+                    body(it, "তারাবিহ/তাহাজ্জুদ, কুরআন, ইস্তিগফার আর দোয়া — অল্প হলেও আজ রাতে।"), it, null, date, route = "fasting")
+            }
+            NotifKind.RAMADAN_EVE -> {
+                val it = pick("gain_fast")
+                post(ctx, id, CH_AYAH, "কাল থেকে রমজান ইনশাআল্লাহ", it?.shortBn ?: "রমজান মোবারক।",
+                    body(it, "আজ রাতে তারাবিহ, সাহরির জন্য অ্যালার্ম, আর রমজানে খতমের নিয়ত।", "চাঁদ দেখার ঘোষণার সাথে না মিললে সেটিংস → হিজরি তারিখ সংশোধন।"),
+                    it, null, date, route = "fasting")
+            }
+            NotifKind.FAST_EVE -> {
+                val tomorrow = date.plusDays(1)
+                val reasons = Fasting.naflReasons(tomorrow, prefs.hijri(tomorrow), Engine.shawwalDone(ctx, today)).filter { it in prefs.naflFasts }
+                if (reasons.isEmpty()) return
+                val tag = when {
+                    NaflFast.ARAFAH in reasons -> "arafah"
+                    NaflFast.ASHURA in reasons -> "ashura"
+                    NaflFast.SHAWWAL in reasons -> "shawwal"
+                    else -> "sunnah_fast"
+                }
+                val it = pick(tag) ?: pick("sunnah_fast")
+                post(ctx, id, CH_SUNNAH, "আগামীকাল ${reasons.first().bn}", reasons.joinToString(" · ") { r -> r.bn },
+                    body(it, "নিয়ত করে সাহরির জন্য অ্যালার্ম দিয়ে রাখুন।"), it, null, date, route = "fasting")
+            }
+            else -> return
+        }
     }
 
     /** জবাবদিহি বন্ধুকে পাঠানোর শেয়ার — হোয়াটসঅ্যাপ/মেসেঞ্জার/SMS যেটা ইউজার বাছাই করেন */

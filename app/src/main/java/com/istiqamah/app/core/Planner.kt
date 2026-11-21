@@ -83,7 +83,19 @@ enum class NotifKind(val isPrayer: Boolean, val priority: Int) {
     /** ফজরের পরে (বা বাছাই করা সময়ে): আজকের পড়া — বড় পুরস্কার */
     QURAN_DAILY(false, 1),
     /** ইশার পরে, আজকের লক্ষ্য পূরণ না হলে: ক্ষতি + আশা */
-    QURAN_LOSS(false, 1);
+    QURAN_LOSS(false, 1),
+
+    // ---- v0.7: রোজা ও রমজান ----
+    /** (রমজান) সাহরি খাওয়ার ডাক — ফজরের suhoorLead মিনিট আগে */
+    SUHOOR(false, 0),
+    /** (রমজান) সাহরি শেষ হতে ১০ মিনিট */
+    SUHOOR_END(false, 0),
+    /** (রমজান) ইফতারের ১০ মিনিট আগে — দোয়া, আর "রোজা রেখেছি" চেক-ইন */
+    IFTAR(false, 0),
+    /** (রমজান) শেষ দশকের বেজোড় রাত — লাইলাতুল কদর */
+    QADR_NIGHT(false, 1),
+    /** কাল থেকে রমজান */
+    RAMADAN_EVE(false, 0);
 
     val isHomeNudge: Boolean get() = this == HOME_NUDGE_1 || this == HOME_NUDGE_2 || this == HOME_NUDGE_3
 
@@ -130,6 +142,11 @@ data class ExtraReminders(
     /** v0.6: দৈনিক কুরআন; quranAt null = ফজরের পরে (সূর্যোদয়ের ১৫ মিনিট আগে) */
     val quran: Boolean = false,
     val quranAt: LocalTime? = null,
+    /** v0.7: রমজানের সাহরি-ইফতার-কদর রিমাইন্ডার */
+    val fasting: Boolean = false,
+    val suhoorLeadMin: Int = 45,
+    /** কোন নফল রোজাগুলোর আগের রাতে মনে করাবে (FAST_EVE সুন্নত দিনলিপিতে চালু থাকলে) */
+    val nafl: Set<NaflFast> = NaflFast.entries.toSet(),
 )
 
 data class PlannerInput(
@@ -159,6 +176,12 @@ data class PlannerInput(
     val silentRepeat: Boolean = false,
     /** v0.6: কোন দিনের কুরআনের লক্ষ্য পূরণ হয়েছে */
     val quranDone: Set<LocalDate> = emptySet(),
+    /** v0.7: প্রতিটা তারিখের হিজরি (সংশোধনসহ) — আজ, কাল, পরশু */
+    val hijri: Map<LocalDate, HijriDay> = emptyMap(),
+    /** কোন দিনের রোজা লেখা হয়ে গেছে */
+    val fastLogged: Set<LocalDate> = emptySet(),
+    /** এ বছরের শাওয়ালে কয়টা রোজা রাখা হয়েছে */
+    val shawwalDone: Int = 0,
 )
 
 object Planner {
@@ -231,6 +254,7 @@ object Planner {
             }
             pauseCheckFor(date, windows, input)?.takeIf { it.fireAt.isAfter(input.now) }?.let { out += it }
             out += quranFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
+            out += fastingFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += extrasFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += routineFor(date, windows, input.extras).filter { it.fireAt.isAfter(input.now) }
             reportFor(date, windows, input.extras)?.takeIf { it.fireAt.isAfter(input.now) }?.let { out += it }
@@ -318,9 +342,7 @@ object Planner {
         add(NotifKind.DINNER, maghrib.start.plusMinutes(20))
         add(NotifKind.SLEEP_PREP, minOf(isha.start.plusMinutes(75), isha.end.minusMinutes(30)))
         add(NotifKind.TAHAJJUD, maghrib.start.plus(night.multipliedBy(2).dividedBy(3)))
-        if (date.dayOfWeek == DayOfWeek.SUNDAY || date.dayOfWeek == DayOfWeek.WEDNESDAY) {
-            add(NotifKind.FAST_EVE, isha.start.plusMinutes(30))
-        }
+        // FAST_EVE (নফল রোজার আগের রাত) এখন fastingFor-এ — হিজরি তারিখ লাগে
         return out
     }
 
@@ -366,6 +388,39 @@ object Planner {
             PlannedNotif(date, null, NotifKind.QURAN_DAILY, daily),
             PlannedNotif(date, null, NotifKind.QURAN_LOSS, loss).takeIf { it.fireAt.isAfter(daily.plusMinutes(60)) },
         )
+    }
+
+    /**
+     * রোজা: রমজানে সাহরি (ফজরের suhoorLead মিনিট আগে), সাহরি শেষের ১০ মিনিট আগে, ইফতারের ১০ মিনিট আগে,
+     * শেষ দশকের বেজোড় রাতে ইশার ৯০ মিনিট পরে কদর; রমজানের আগের সন্ধ্যায় মাগরিবের ৩০ মিনিট পরে।
+     * রমজানের বাইরে: কাল নফল রোজার দিন হলে আজ ইশার ৩০ মিনিট পরে (সুন্নত দিনলিপিতে চালু থাকলে)।
+     * বিরতিতে (মহিলা) রোজার রিমাইন্ডার নেই।
+     */
+    fun fastingFor(date: LocalDate, windows: List<PrayerWindow>, input: PlannerInput): List<PlannedNotif> {
+        if (Pause.isPaused(date, input.pausedFrom)) return emptyList()
+        val ex = input.extras
+        val h = input.hijri[date]
+        val tomorrowH = input.hijri[date.plusDays(1)]
+        val w = windows.associateBy { it.prayer }
+        val fajr = w.getValue(Prayer.FAJR)
+        val maghrib = w.getValue(Prayer.MAGHRIB)
+        val isha = w.getValue(Prayer.ISHA)
+        val out = ArrayList<PlannedNotif>()
+        fun add(k: NotifKind, at: ZonedDateTime) { out += PlannedNotif(date, null, k, at) }
+        if (ex.fasting) {
+            if (h?.isRamadan == true) {
+                add(NotifKind.SUHOOR, fajr.start.minusMinutes(ex.suhoorLeadMin.toLong()))
+                add(NotifKind.SUHOOR_END, fajr.start.minusMinutes(Fasting.SUHOOR_END_WARN_MIN))
+                if (date !in input.fastLogged) add(NotifKind.IFTAR, maghrib.start.minusMinutes(Fasting.IFTAR_BEFORE_MIN))
+                if (Fasting.isOddQadrNightTonight(h)) add(NotifKind.QADR_NIGHT, minOf(isha.start.plusMinutes(90), isha.end.minusMinutes(10)))
+            }
+            if (h?.isRamadan != true && tomorrowH?.isRamadan == true) add(NotifKind.RAMADAN_EVE, maghrib.start.plusMinutes(30))
+        }
+        if (NotifKind.FAST_EVE in ex.routine && tomorrowH?.isRamadan != true) {
+            val reasons = Fasting.naflReasons(date.plusDays(1), tomorrowH, input.shawwalDone).filter { it in ex.nafl }
+            if (reasons.isNotEmpty()) add(NotifKind.FAST_EVE, isha.start.plusMinutes(30))
+        }
+        return out
     }
 
     /** বিরতির ৩য় দিন থেকে যোহরের ৩০ মিনিট পরে একবার — "বিরতি শেষ হলে জানান" */

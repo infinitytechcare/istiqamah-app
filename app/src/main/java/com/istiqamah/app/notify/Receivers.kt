@@ -53,11 +53,18 @@ class ActionReceiver : BroadcastReceiver() {
         const val ACTION_WUDU = "com.istiqamah.app.WUDU"
         /** v0.5: বিরতি শেষ */
         const val ACTION_PAUSE_END = "com.istiqamah.app.PAUSE_END"
+        /** v0.7: ইফতারের নোটিফিকেশন থেকে "রোজা রেখেছি" */
+        const val ACTION_FAST_DONE = "com.istiqamah.app.FAST_DONE"
         const val EXTRA_STATUS = "status"
     }
 
     override fun onReceive(context: Context, intent: Intent) {
         val ctx = context.applicationContext
+        if (intent.action == ACTION_FAST_DONE) {
+            val d = runCatching { LocalDate.parse(intent.getStringExtra(Engine.EXTRA_DATE)) }.getOrNull() ?: Engine.today(ctx)
+            work { Engine.logFast(ctx, d, com.istiqamah.app.core.FastStatus.FASTED) }
+            return
+        }
         if (intent.action == ACTION_PAUSE_END) {
             NotificationManagerCompat.from(ctx).cancel(PlannedNotif(Engine.today(ctx), null, NotifKind.PAUSE_CHECK, Engine.now(ctx)).id)
             work { Engine.endPause(ctx) }

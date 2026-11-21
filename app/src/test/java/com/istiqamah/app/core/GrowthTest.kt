@@ -264,20 +264,13 @@ class SunnahRoutineTest {
         val tahajjud = r.getValue(NotifKind.TAHAJJUD)
         val nextFajr = windows(wed.plusDays(1))[0].start
         assertTrue(tahajjud.isAfter(w[4].end) && tahajjud.isBefore(nextFajr))
-        assertNotNull(r[NotifKind.FAST_EVE]) // বুধবার রাত → বৃহস্পতিবারের রোজা
+        assertNull(r[NotifKind.FAST_EVE]) // v0.7: নফল রোজার রাত এখন fastingFor-এ (FastingTest)
     }
 
     @Test fun qailulaCanBeBeforeDhuhr() {
         val w = windows(wed)
         val q = Planner.routineFor(wed, w, all.copy(qailulaBeforeDhuhr = true)).first { it.kind == NotifKind.QAILULA }
         assertTrue(q.fireAt.isBefore(w[1].start))
-    }
-
-    @Test fun fastEveOnlySundayAndWednesday() {
-        val thu = LocalDate.of(2026, 11, 12)
-        assertTrue(Planner.routineFor(thu, windows(thu), all).none { it.kind == NotifKind.FAST_EVE })
-        val sun = LocalDate.of(2026, 11, 15)
-        assertTrue(Planner.routineFor(sun, windows(sun), all).any { it.kind == NotifKind.FAST_EVE })
     }
 
     @Test fun disabledItemsAreNotPlannedAndCapIsUnaffected() {

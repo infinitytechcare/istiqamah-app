@@ -76,6 +76,7 @@ fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, open: (String) -> Un
 
         item { PermissionWarnings(t, onOpenBattery) }
         item { ProfileTodayCard(vm, open) }
+        item { RamadanTodayCard(vm, open) }
         if (vm.prefs.quranOn) item { QuranTodayCard(vm, open); Spacer(Modifier.height(12.dp)) }
 
         // v0.4: আজ ঘরে মোড কেমন — এক নজরে, বদলাতে এক ট্যাপ

@@ -13,6 +13,9 @@ import com.istiqamah.app.core.Stage
 import com.istiqamah.app.core.StageState
 import com.istiqamah.app.core.DayOverride
 import com.istiqamah.app.core.Gender
+import com.istiqamah.app.core.Hijri
+import com.istiqamah.app.core.HijriDay
+import com.istiqamah.app.core.NaflFast
 import com.istiqamah.app.core.QuranGoal
 import com.istiqamah.app.core.QuranIndex
 import com.istiqamah.app.core.QuranUnit
@@ -153,6 +156,7 @@ class Prefs(context: Context) {
             routine = routine, qailulaBeforeDhuhr = qailulaBeforeDhuhr,
             dailyReport = dailyReport && partnerName.isNotBlank(),
             quran = quranOn, quranAt = quranAt,
+            fasting = fastingOn, suhoorLeadMin = suhoorLead, nafl = naflFasts,
         )
 
     // ---------- v0.3: সুন্নত দিনলিপি ----------
@@ -210,6 +214,27 @@ class Prefs(context: Context) {
             return d to g
         }
         set(v) = sp.edit().putString("wgoal_date", v?.first?.toString()).putString("wgoal", v?.second).apply()
+
+    // ---------- v0.7: রোজা ও রমজান ----------
+    var fastingOn: Boolean
+        get() = sp.getBoolean("fasting_on", true)
+        set(v) = sp.edit().putBoolean("fasting_on", v).apply()
+
+    /** ফজরের কত মিনিট আগে সাহরির ডাক */
+    var suhoorLead: Int
+        get() = sp.getInt("suhoor_lead", 45)
+        set(v) = sp.edit().putInt("suhoor_lead", v.coerceIn(15, 120)).apply()
+
+    var naflFasts: Set<NaflFast>
+        get() = sp.getStringSet("nafl", null)?.mapNotNull { it.toIntOrNull()?.let(NaflFast::fromCode) }?.toSet() ?: NaflFast.entries.toSet()
+        set(v) = sp.edit().putStringSet("nafl", v.map { it.code.toString() }.toSet()).apply()
+
+    /** বাকি কাযা রোজা */
+    var qazaFasts: Int
+        get() = sp.getInt("qaza_fasts", 0)
+        set(v) = sp.edit().putInt("qaza_fasts", v.coerceAtLeast(0)).apply()
+
+    fun hijri(d: LocalDate): HijriDay? = Hijri.of(d, hijriAdjust)
 
     // ---------- v0.6: দৈনিক কুরআন ----------
     var quranOn: Boolean

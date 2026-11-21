@@ -29,6 +29,8 @@ REQUIRED_TAGS = {
     "men": 5, "women": 3, "jamaah": 4, "jamaah_miss": 2, "early": 1,
     # দৈনিক কুরআন (v0.6)
     "gain_quran": 6, "loss_quran": 2,
+    # রোজা ও রমজান (v0.7)
+    "gain_fast": 4, "loss_fast": 2, "ramadan": 3, "qadr": 2, "suhoor": 1, "iftar": 2, "sunnah_fast": 3,
 }
 TONES = {"gentle", "encourage", "serious", "hope"}
 MAX_SHORT = 140  # নোটিফিকেশনে এক নজরে পড়ার মতো

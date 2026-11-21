@@ -23,6 +23,7 @@ import com.istiqamah.app.core.PrayerTimesCalculator
 import com.istiqamah.app.core.PrayerWindow
 import com.istiqamah.app.core.DayOverride
 import com.istiqamah.app.core.Situation
+import com.istiqamah.app.core.FastStatus
 import com.istiqamah.app.core.QuranProgress
 import com.istiqamah.app.data.QuranData
 import com.istiqamah.app.core.Gender
@@ -139,6 +140,9 @@ object Engine {
                 pausedFrom = prefs.pausedFrom,
                 silentRepeat = prefs.silentRepeat,
                 quranDone = prefs.quranDoneDates,
+                hijri = (0L..2L).mapNotNull { n -> today.plusDays(n).let { d -> prefs.hijri(d)?.let { d to it } } }.toMap(),
+                fastLogged = store.fasts(today, today.plusDays(1)).keys,
+                shawwalDone = shawwalDone(ctx, today),
             )
         )
         val ids = HashSet<String>()
@@ -202,6 +206,44 @@ object Engine {
             .putExtra(EXTRA_TEST, true)
         val pi = PendingIntent.getBroadcast(ctx, RC_TEST, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         setAlarm(ctx, am, RC_TEST, p.fireAt.toInstant().toEpochMilli(), pi)
+    }
+
+    // ---------- v0.7: রোজা ----------
+
+    /**
+     * রোজার অবস্থা লেখা। রমজানের দিন "রাখিনি" বা "অসুস্থ/সফর/বিরতি" হলে কাযা রোজা এক বাড়ে;
+     * পরে বদলালে আবার কমে।
+     */
+    fun logFast(ctx: Context, date: LocalDate, status: FastStatus?) {
+        val prefs = Prefs(ctx)
+        val store = LogStore.get(ctx)
+        val old = store.fast(date)
+        store.setFast(date, status)
+        if (prefs.hijri(date)?.isRamadan == true) {
+            fun owes(s: FastStatus?) = if (s == FastStatus.MISSED || s == FastStatus.EXCUSED) 1 else 0
+            val delta = owes(status) - owes(old)
+            if (delta != 0) prefs.qazaFasts = prefs.qazaFasts + delta
+        }
+        Notifier.cancelExtra(ctx, date, NotifKind.IFTAR)
+        reschedule(ctx)
+    }
+
+    /** একটা কাযা রোজা আদায় হলো (আজকের দিন রোজা হিসেবে লেখা) */
+    fun qazaFastDone(ctx: Context) {
+        val prefs = Prefs(ctx)
+        if (prefs.qazaFasts > 0) prefs.qazaFasts = prefs.qazaFasts - 1
+        LogStore.get(ctx).setFast(today(ctx), FastStatus.FASTED)
+        reschedule(ctx)
+    }
+
+    /** এ বছরের শাওয়ালে (২ তারিখ থেকে) কয়টা রোজা রাখা হয়েছে */
+    fun shawwalDone(ctx: Context, today: LocalDate): Int {
+        val prefs = Prefs(ctx)
+        val h = prefs.hijri(today) ?: return 0
+        if (h.month != 10) return 0
+        return LogStore.get(ctx).fasts(today.minusDays(35), today).count { (d, st) ->
+            st == FastStatus.FASTED && prefs.hijri(d)?.let { it.year == h.year && it.month == 10 && it.day >= 2 } == true
+        }
     }
 
     // ---------- v0.6: দৈনিক কুরআন ----------
@@ -279,6 +321,11 @@ object Engine {
             val log = store.day(d)
             windows(ctx, d)?.filter { !it.start.isAfter(now) && log.status(it.prayer) == null }
                 ?.forEach { store.setStatus(d, it.prayer, PrayerStatus.EXCUSED) }
+            // রমজানের বিরতির দিন: রোজা "বিরতি" — পরে কাযা করতে হয়
+            if (prefs.hijri(d)?.isRamadan == true && store.fast(d) == null) {
+                store.setFast(d, FastStatus.EXCUSED)
+                prefs.qazaFasts = prefs.qazaFasts + 1
+            }
             d = d.plusDays(1)
         }
     }
