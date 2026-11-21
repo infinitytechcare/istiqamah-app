@@ -160,7 +160,7 @@ class Prefs(context: Context) {
             quran = quranOn, quranAt = quranAt,
             fasting = fastingOn, suhoorLeadMin = suhoorLead, nafl = naflFasts,
             zakatHijri = zakatHijri, sadaqahDay = sadaqahDay, dhulHijjah = dhulHijjahOn,
-            kinDay = kinDay, debtDue = debtDue, halaqaDay = halaqaDay,
+            kinDay = kinDay, debtDue = debtDue, halaqaDay = halaqaDay, ilmAt = ilmAt,
         )
 
     // ---------- v0.3: সুন্নত দিনলিপি ----------
@@ -373,6 +373,58 @@ class Prefs(context: Context) {
     var quranBold: Boolean
         get() = sp.getBoolean("quran_bold", true)
         set(v) = sp.edit().putBoolean("quran_bold", v).apply()
+
+    // ---------- v0.12: ইলম ও দাওয়াহ ----------
+    /** মুখস্থের অবস্থা: "key|ধাপ|শেষ রিভিশন" */
+    var hifz: Map<String, com.istiqamah.app.core.HifzState>
+        get() = (sp.getStringSet("hifz", emptySet()) ?: emptySet()).mapNotNull { e ->
+            val p = e.split('|')
+            if (p.size != 3) return@mapNotNull null
+            val d = runCatching { LocalDate.parse(p[2]) }.getOrNull() ?: return@mapNotNull null
+            p[0] to com.istiqamah.app.core.HifzState(p[1].toIntOrNull() ?: 0, d)
+        }.toMap()
+        set(v) = sp.edit().putStringSet("hifz", v.map { (k, s) -> "$k|${s.level}|${s.last}" }.toSet()).apply()
+
+    /** শেখার খাতা: "তারিখ|উৎস" (শেষ ১২০ দিন) */
+    var ilmLog: Map<LocalDate, Set<com.istiqamah.app.core.IlmSource>>
+        get() {
+            val out = HashMap<LocalDate, MutableSet<com.istiqamah.app.core.IlmSource>>()
+            (sp.getStringSet("ilm_log", emptySet()) ?: emptySet()).forEach { e ->
+                val d = runCatching { LocalDate.parse(e.substringBefore('|')) }.getOrNull() ?: return@forEach
+                com.istiqamah.app.core.IlmSource.fromCode(e.substringAfter('|').toIntOrNull() ?: 0)?.let { out.getOrPut(d) { HashSet() }.add(it) }
+            }
+            return out
+        }
+        set(v) {
+            val keep = v.keys.sortedDescending().take(120).toSet()
+            sp.edit().putStringSet("ilm_log", v.filterKeys { it in keep }.flatMap { (d, ss) -> ss.map { "$d|${it.code}" } }.toSet()).apply()
+        }
+
+    /** যাদের নামাজের দাওয়াত দিতে চাই — এনক্রিপ্ট করে */
+    var dawah: List<com.istiqamah.app.core.DawahPerson>
+        get() = runCatching {
+            val a = org.json.JSONArray(secret("dawah").ifEmpty { "[]" })
+            (0 until a.length()).map { i ->
+                val o = a.getJSONObject(i)
+                com.istiqamah.app.core.DawahPerson(
+                    o.getLong("id"), o.optString("name"), com.istiqamah.app.core.DawahStage.fromCode(o.optInt("stage")),
+                    o.optString("note"), o.optString("last").takeIf { it.isNotEmpty() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
+                )
+            }
+        }.getOrDefault(emptyList())
+        set(v) = setSecret("dawah", org.json.JSONArray().apply {
+            v.forEach { d -> put(org.json.JSONObject().apply { put("id", d.id); put("name", d.name); put("stage", d.stage.code); put("note", d.note); put("last", d.last?.toString() ?: "") }) }
+        }.toString())
+
+    /** প্রতিদিনের শেখার রিমাইন্ডার; null = বন্ধ */
+    var ilmAt: LocalTime?
+        get() = sp.getInt("ilm_at", -1).takeIf { it >= 0 }?.let { LocalTime.of(it / 60, it % 60) }
+        set(v) = sp.edit().putInt("ilm_at", v?.let { it.hour * 60 + it.minute } ?: -1).apply()
+
+    /** আজ ট্যাবে "ইলম আজ" কার্ড */
+    var ilmToday: Boolean
+        get() = sp.getBoolean("ilm_today", true)
+        set(v) = sp.edit().putBoolean("ilm_today", v).apply()
 
     // ---------- v0.11: পরিবার ----------
     var marital: com.istiqamah.app.core.Marital

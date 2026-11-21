@@ -77,6 +77,14 @@ fun AmalScreen(vm: AppVm, open: (String) -> Unit, requestUnlock: (() -> Unit) ->
         Text("নামাজের পরের ধাপ — যিকির, নিজের হিসাব আর গুনাহ ছাড়ার লড়াই", fontSize = 14.sp, color = Muted)
         Spacer(Modifier.height(12.dp))
 
+        // v0.12: ইলম ও দাওয়াহ
+        SectionCard(Modifier.clickable { open("ilm") }) {
+            Text("ইলম ও দাওয়াহ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+            Text("প্রতিদিন একটু শেখা, মুখস্থ সূরার রিভিশন, নামাজের দাওয়াতের তালিকা ও আদব, আজকের আয়াত শেয়ার",
+                fontSize = 14.sp, color = Muted)
+        }
+        Spacer(Modifier.height(12.dp))
+
         // v0.11: পরিবার
         SectionCard(Modifier.clickable { open("family") }) {
             Text("পরিবার", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)

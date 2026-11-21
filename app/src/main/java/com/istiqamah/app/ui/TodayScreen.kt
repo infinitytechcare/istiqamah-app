@@ -139,6 +139,7 @@ fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, open: (String) -> Un
         if (t.showSunnah) item { SunnahTodayCard(vm, t.sunnahToday, open) }
         t.akhlaqAction?.let { (a, act) -> item { AkhlaqTodayCard(vm, a, act, t.akhlaqDoneToday, open) } }
         if (t.showFamily) item { FamilyTodayCard(vm, t.spouseAct, t.kidsSalah, open) }
+        if (t.showIlm) item { IlmTodayCard(t.hifzDue, t.ilmDoneToday, open) }
         t.wholeness?.let { w -> item { WholenessCard(w, open) } }
 
         // এখন কোন আযকারের সময় / ইশার পর মুহাসাবা

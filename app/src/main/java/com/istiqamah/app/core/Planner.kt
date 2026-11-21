@@ -115,7 +115,11 @@ enum class NotifKind(val isPrayer: Boolean, val priority: Int) {
 
     // ---- v0.11: পরিবার ----
     /** সাপ্তাহিক পারিবারিক হালাকা (ইশার ২০ মিনিট পরে) */
-    FAMILY_HALAQA(false, 2);
+    FAMILY_HALAQA(false, 2),
+
+    // ---- v0.12: ইলম ----
+    /** প্রতিদিন একটু শেখা / মুখস্থের রিভিশন — বেছে নেওয়া সময়ে */
+    ILM_DAILY(false, 2);
 
     val isHomeNudge: Boolean get() = this == HOME_NUDGE_1 || this == HOME_NUDGE_2 || this == HOME_NUDGE_3
 
@@ -179,6 +183,8 @@ data class ExtraReminders(
     val debtDue: Set<LocalDate> = emptySet(),
     /** v0.11: সাপ্তাহিক পারিবারিক হালাকার দিন; null = বন্ধ */
     val halaqaDay: DayOfWeek? = null,
+    /** v0.12: প্রতিদিনের শেখার রিমাইন্ডার; null = বন্ধ */
+    val ilmAt: LocalTime? = null,
 )
 
 data class PlannerInput(
@@ -486,6 +492,7 @@ object Planner {
         val ex = input.extras
         val w = windows.associateBy { it.prayer }
         val out = ArrayList<PlannedNotif>()
+        ex.ilmAt?.let { t -> out += PlannedNotif(date, null, NotifKind.ILM_DAILY, date.atTime(t).atZone(w.getValue(Prayer.FAJR).start.zone)) }
         if (ex.halaqaDay != null && date.dayOfWeek == ex.halaqaDay) out += PlannedNotif(date, null, NotifKind.FAMILY_HALAQA, w.getValue(Prayer.ISHA).start.plusMinutes(20))
         if (ex.kinDay != null && date.dayOfWeek == ex.kinDay) out += PlannedNotif(date, null, NotifKind.KIN_DAY, w.getValue(Prayer.MAGHRIB).start.plusMinutes(40))
         if (date in ex.debtDue || date.plusDays(Akhlaq.DEBT_REMIND_BEFORE) in ex.debtDue) {

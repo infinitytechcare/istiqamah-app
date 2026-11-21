@@ -412,6 +412,13 @@ object Notifier {
                 fasting(ctx, kind, date, id)
             NotifKind.ZAKAT_SOON, NotifKind.ZAKAT_DAY, NotifKind.SADAQAH_WEEKLY, NotifKind.DHUL_HIJJAH_EVE,
             NotifKind.KIN_DAY, NotifKind.DEBT_DUE, NotifKind.FAMILY_HALAQA -> charity(ctx, kind, date, id)
+            NotifKind.ILM_DAILY -> {
+                val prefs = Prefs(ctx)
+                if (date in prefs.ilmLog) return
+                val due = com.istiqamah.app.core.Ilm.dueToday(prefs.hifz, date).size
+                single("আজ একটু দ্বীন শেখা", Amal.QURAN, gain = true, route = "ilm", salt = 13,
+                    intro = (if (due > 0) "আজ ${Bn.num(due)}টি মুখস্থ অংশের রিভিশন বাকি। " else "") + "১০ মিনিট — একটা হাদিস, একটা আয়াতের তাফসির বা একটা আলোচনা।")
+            }
             NotifKind.QURAN_DAILY, NotifKind.QURAN_LOSS -> {
                 val prefs = Prefs(ctx)
                 if (date in prefs.quranDoneDates) return

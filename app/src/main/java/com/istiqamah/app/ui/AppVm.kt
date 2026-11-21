@@ -77,6 +77,10 @@ data class TodayState(
     /** ৭+ বছরের সন্তান আর আজ তাদের কয় ওয়াক্ত */
     val kidsSalah: List<Pair<com.istiqamah.app.core.Child, Int?>> = emptyList(),
     val showFamily: Boolean = false,
+    /** v0.12: আজ রিভিশন বাকি এমন মুখস্থ অংশ, আর আজ শেখা হয়েছে কিনা */
+    val hifzDue: List<String> = emptyList(),
+    val ilmDoneToday: Boolean = false,
+    val showIlm: Boolean = false,
 ) {
     val isFriday: Boolean get() = today.dayOfWeek == DayOfWeek.FRIDAY
     fun prayerName(p: Prayer) = if (isFriday && p == Prayer.DHUHR) "জুমা / যোহর" else p.bn
@@ -174,6 +178,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 naflFasts = nafl.takeIf { prefs.fastingOn || it > 0 },
                 sadaqahWeeks = weeks.takeIf { prefs.sadaqahDay != null || log.isNotEmpty() },
                 imanLessons = prefs.imanDone.count { com.istiqamah.app.core.Iman.byKey(it) != null },
+                ilmDays = prefs.ilmLog.keys.count { !it.isBefore(from) }.takeIf { it > 0 || prefs.ilmAt != null },
                 familyPercent = prefs.halaqaDay?.let { com.istiqamah.app.core.Family.halaqaPercent(prefs.halaqaDone, today) },
                 akhlaqPercent = com.istiqamah.app.core.Akhlaq.average((0 until 4).map { w -> prefs.akhlaqWeek(com.istiqamah.app.core.Ihsan.weekKey(today.minusWeeks(w.toLong()))) }),
                 sunnahPercent = store.sunnah(from, today).takeIf { it.isNotEmpty() }?.let { com.istiqamah.app.core.Ihsan.percent(it, today, days.toInt()) },
@@ -224,6 +229,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             akhlaqDoneToday = today in prefs.akhlaqDone,
             spouseAct = if (prefs.marital == com.istiqamah.app.core.Marital.MARRIED) com.istiqamah.app.core.Family.spouseActFor(prefs.gender, today) else null,
             kidsSalah = prefs.children.filter { com.istiqamah.app.core.Family.prays(it, today) }.map { it to prefs.childSalah(it.id)[today] },
+            hifzDue = com.istiqamah.app.core.Ilm.dueToday(prefs.hifz, today),
+            ilmDoneToday = today in prefs.ilmLog,
+            showIlm = prefs.ilmToday && (prefs.hifz.isNotEmpty() || prefs.ilmLog.isNotEmpty() || prefs.ilmAt != null),
             showFamily = prefs.familyToday && (prefs.marital == com.istiqamah.app.core.Marital.MARRIED || prefs.children.any { com.istiqamah.app.core.Family.prays(it, today) }),
             suggestTahajjud = stage.stage == com.istiqamah.app.core.Stage.IHSAN && !prefs.tahajjudTipOff &&
                 com.istiqamah.app.core.NotifKind.TAHAJJUD !in prefs.routine,
