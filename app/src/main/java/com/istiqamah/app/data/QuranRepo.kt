@@ -16,11 +16,20 @@ class QuranData(
     val index: QuranIndex,
     val surahs: List<SurahInfo>,
     private val ar: Array<String>,
+    /** পাক-ভারত লিপির পাঠ — হুবহু, কোনো বদল নয় (শেষে আয়াত-নম্বরের চিহ্নসহ) */
+    private val ip: Array<String>,
     private val bn: Array<String>,
     private val bnIssues: Set<Int>,
     val attribution: String,
 ) {
     fun ar(id: Int): String = ar[id - 1]
+    fun ip(id: Int): String = ip[id - 1]
+
+    /** পছন্দের লিপিতে আয়াত */
+    fun arabic(id: Int, indoPak: Boolean): String = if (indoPak) ip(id) else ar(id)
+
+    /** সূরার শুরুর বিসমিল্লাহ — নম্বরের চিহ্ন ছাড়া */
+    fun bismillah(indoPak: Boolean): String = if (indoPak) ip(1).substringBeforeLast(" \u06DF").trimEnd() else ar(1)
     fun bn(id: Int): String = bn[id - 1]
     fun hasBnIssue(id: Int): Boolean = id in bnIssues
     fun surah(id: Int): SurahInfo = surahs[index.surahOf(id) - 1]
@@ -58,12 +67,15 @@ object QuranRepo {
         )
         val arA = o.getJSONArray("ar")
         val bnA = o.getJSONArray("bn")
+        val ipLines = context.assets.open("quran_indopak.txt").bufferedReader(Charsets.UTF_8).use { r -> r.readLines().filter { it.isNotBlank() } }
+        check(ipLines.size == arA.length()) { "quran_indopak.txt: ${ipLines.size} লাইন" }
         return QuranData(
             index, surahs,
             Array(arA.length()) { com.istiqamah.app.core.QuranScript.forFont(arA.getString(it)) },
+            ipLines.toTypedArray(),
             Array(bnA.length()) { bnA.getString(it) },
             o.getJSONArray("bn_issues").ints().toSet(),
-            o.getString("attribution"),
+            o.getString("attribution") + " · পাক-ভারত লিপির পাঠ ও ফন্ট: QuranWBW.com (আয়মান সিদ্দিকী ও আর. সিদ্দিকা; Al Qalam ভিত্তিক), কিং ফাহাদ কমপ্লেক্সের নাস্তালিক মুসহাফের সাথে মিলানো — সাদাকায়ে জারিয়া হিসেবে বিনামূল্যে",
         )
     }
 }

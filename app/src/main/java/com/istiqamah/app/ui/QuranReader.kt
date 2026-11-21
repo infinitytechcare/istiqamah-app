@@ -152,6 +152,8 @@ fun QuranReaderScreen(vm: AppVm, startPage: Int?, onBack: () -> Unit) {
     var arSize by remember { mutableIntStateOf(p.quranArSize) }
     var bnSize by remember { mutableIntStateOf(p.quranBnSize) }
     var bold by remember { mutableStateOf(p.quranBold) }
+    var script by remember { mutableIntStateOf(p.quranScript) }
+    val indoPak = script == 0
     var repeat by remember { mutableIntStateOf(p.quranRepeat) }
     var settings by remember { mutableStateOf(false) }
     var goTo by remember { mutableStateOf(false) }
@@ -190,8 +192,9 @@ fun QuranReaderScreen(vm: AppVm, startPage: Int?, onBack: () -> Unit) {
     }
 
     val arStyle = TextStyle(
-        fontFamily = AmiriQuran, fontSize = arSize.sp, color = ArInk,
-        fontWeight = if (bold) FontWeight.SemiBold else FontWeight.Normal, // একটিই ওজন — SemiBold চাইলে অ্যান্ড্রয়েড মোটা করে আঁকে
+        fontFamily = if (indoPak) IndoPak else AmiriQuran, fontSize = arSize.sp, color = ArInk,
+        // একটিই ওজন — SemiBold চাইলে অ্যান্ড্রয়েড মোটা করে আঁকে; ইন্দোপাক ফন্ট এমনিতেই ভরাট
+        fontWeight = if (bold && !indoPak) FontWeight.SemiBold else FontWeight.Normal,
         textDirection = TextDirection.Rtl,
     )
 
@@ -245,8 +248,8 @@ fun QuranReaderScreen(vm: AppVm, startPage: Int?, onBack: () -> Unit) {
                             onPrev = { scope.launch { pager.animateScrollToPage(idx - 1) } },
                             onNext = { scope.launch { pager.animateScrollToPage(idx + 1) } })
                     }
-                    if (mode == 0) TranslationPage(data, pg, arStyle, bnSize, showBn, playing, p.quranBookmark, { menuFor = it }, footer)
-                    else MushafPage(data, pg, arStyle, playing, { menuFor = it }, footer)
+                    if (mode == 0) TranslationPage(data, pg, indoPak, arStyle, bnSize, showBn, playing, p.quranBookmark, { menuFor = it }, footer)
+                    else MushafPage(data, pg, indoPak, arStyle, playing, { menuFor = it }, footer)
                 }
             }
         }
@@ -305,12 +308,19 @@ fun QuranReaderScreen(vm: AppVm, startPage: Int?, onBack: () -> Unit) {
                             Text(label, fontSize = 15.sp)
                         }
                     }
+                    Text("লিপি", fontSize = 14.sp, color = Muted, modifier = Modifier.padding(top = 8.dp))
+                    listOf("পাক-ভারত (ইন্দোপাক) — বাংলাদেশে প্রচলিত", "মাদানি (উসমানি) — সৌদি মুসহাফ").forEachIndexed { i, label ->
+                        Row(Modifier.fillMaxWidth().clickable { script = i; p.quranScript = i }, verticalAlignment = Alignment.CenterVertically) {
+                            RadioButton(selected = script == i, onClick = { script = i; p.quranScript = i })
+                            Text(label, fontSize = 15.sp)
+                        }
+                    }
                     if (mode == 0) SettingSwitch("বাংলা অর্থ দেখান", showBn) { showBn = it; p.quranShowBn = it }
-                    SettingSwitch("আরবি হরফ মোটা", bold) { bold = it; p.quranBold = it }
+                    if (!indoPak) SettingSwitch("আরবি হরফ মোটা", bold) { bold = it; p.quranBold = it }
                     Text("আরবির আকার: ${Bn.num(arSize)}", fontSize = 14.sp, color = Muted, modifier = Modifier.padding(top = 8.dp))
                     Slider(value = arSize.toFloat(), onValueChange = { arSize = it.roundToInt(); p.quranArSize = arSize }, valueRange = 20f..44f,
                         colors = SliderDefaults.colors(thumbColor = Emerald700, activeTrackColor = Emerald700))
-                    Text("بِسۡمِ ٱللَّهِ ٱلرَّحۡمَٰنِ ٱلرَّحِيمِ", style = arStyle, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
+                    Text(data.bismillah(indoPak), style = arStyle, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center)
                     if (mode == 0) {
                         Text("বাংলার আকার: ${Bn.num(bnSize)}", fontSize = 14.sp, color = Muted, modifier = Modifier.padding(top = 8.dp))
                         Slider(value = bnSize.toFloat(), onValueChange = { bnSize = it.roundToInt(); p.quranBnSize = bnSize }, valueRange = 13f..26f,
@@ -380,7 +390,7 @@ private sealed interface Row0 {
 
 @Composable
 private fun TranslationPage(
-    data: QuranData, pg: Int, arStyle: TextStyle, bnSize: Int, showBn: Boolean, playing: Int?, bookmark: Int,
+    data: QuranData, pg: Int, indoPak: Boolean, arStyle: TextStyle, bnSize: Int, showBn: Boolean, playing: Int?, bookmark: Int,
     onTap: (Int) -> Unit, footer: @Composable () -> Unit,
 ) {
     val rows = remember(pg) {
@@ -406,10 +416,10 @@ private fun TranslationPage(
             when (r) {
                 is Row0.Banner -> SurahBanner(r.s)
                 is Row0.Bismillah -> Text(
-                    data.ar(1), style = arStyle, textAlign = TextAlign.Center,
+                    data.bismillah(indoPak), style = arStyle.copy(lineHeight = arStyle.fontSize * 2f), textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth().background(Color.White).padding(vertical = 14.dp, horizontal = 12.dp),
                 )
-                is Row0.Ayah -> AyahCard(data, r.id, arStyle, bnSize, showBn, playing == r.id, r.id == bookmark) { onTap(r.id) }
+                is Row0.Ayah -> AyahCard(data, r.id, indoPak, arStyle, bnSize, showBn, playing == r.id, r.id == bookmark) { onTap(r.id) }
                 Row0.Footer -> footer()
             }
         }
@@ -418,7 +428,7 @@ private fun TranslationPage(
 
 @Composable
 private fun AyahCard(
-    data: QuranData, id: Int, arStyle: TextStyle, bnSize: Int, showBn: Boolean, active: Boolean, isBookmark: Boolean, onTap: () -> Unit,
+    data: QuranData, id: Int, indoPak: Boolean, arStyle: TextStyle, bnSize: Int, showBn: Boolean, active: Boolean, isBookmark: Boolean, onTap: () -> Unit,
 ) {
     val ayah = data.index.ayahNo(id)
     val bg = when {
@@ -432,7 +442,12 @@ private fun AyahCard(
         AyahBadge(ayah, Modifier.padding(top = 2.dp))
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            ArabicWithEnd(data.ar(id), ayah, arStyle, if (active) PlayingInk else ArInk)
+            val ink = if (active) PlayingInk else ArInk
+            // ইন্দোপাক পাঠে আয়াত-নম্বরের গোল চিহ্ন ফন্টেই আছে
+            if (indoPak) Text(
+                data.ip(id), style = arStyle.copy(color = ink, lineHeight = arStyle.fontSize * 2.0f),
+                textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth(),
+            ) else ArabicWithEnd(data.ar(id), ayah, arStyle, ink)
             if (id in data.index.sajda) Text("۩ সিজদার আয়াত", fontSize = 13.sp, color = TanDark)
             if (showBn) {
                 Spacer(Modifier.height(10.dp))
@@ -593,11 +608,17 @@ private sealed interface MBlock {
 
 private data class Token(val text: String?, val id: Int, val ayah: Int) // text == null হলে আয়াত-শেষের গোল চিহ্ন
 
+/** অক্ষর ছাড়া শুধু চিহ্ন দিয়ে শুরু (ওয়াকফ, আয়াতের গোল চিহ্ন, ইন্দোপাক ফন্টের নম্বর-গ্লিফ) */
+private fun startsWithMark(w: String): Boolean {
+    val c = w.first()
+    return Character.getType(c) == Character.NON_SPACING_MARK.toInt() || c == '—' || c.code in 0xE000..0xF8FF
+}
+
 @Composable
 private fun MushafPage(
-    data: QuranData, pg: Int, arStyle: TextStyle, playing: Int?, onTap: (Int) -> Unit, footer: @Composable () -> Unit,
+    data: QuranData, pg: Int, indoPak: Boolean, arStyle: TextStyle, playing: Int?, onTap: (Int) -> Unit, footer: @Composable () -> Unit,
 ) {
-    val blocks = remember(pg) {
+    val blocks = remember(pg, indoPak) {
         val out = ArrayList<MBlock>()
         var cur = ArrayList<Token>()
         fun flush() { if (cur.isNotEmpty()) { out += MBlock.Para(cur); cur = ArrayList() } }
@@ -609,8 +630,13 @@ private fun MushafPage(
                 out += MBlock.Header(s)
                 if (s.no != 1 && s.no != 9) out += MBlock.Bismillah(s)
             }
-            data.ar(id).split(' ').filter { it.isNotBlank() }.forEach { cur += Token(it, id, ayah) }
-            cur += Token(null, id, ayah)
+            data.arabic(id, indoPak).split(' ').filter { it.isNotBlank() }.forEach { w ->
+                // ওয়াকফ চিহ্ন বা আয়াতের গোল চিহ্ন আগের শব্দের সাথে থাকে — লাইনের শুরুতে একা যেন না পড়ে
+                val last = cur.lastOrNull()
+                if (last != null && last.id == id && last.text != null && startsWithMark(w)) cur[cur.lastIndex] = last.copy(text = last.text + " " + w)
+                else cur += Token(w, id, ayah)
+            }
+            if (!indoPak) cur += Token(null, id, ayah) // ইন্দোপাকে নম্বরের চিহ্ন পাঠের ভেতরেই
         }
         flush()
         out
@@ -628,7 +654,7 @@ private fun MushafPage(
                     when (b) {
                         is MBlock.Header -> MushafHeader(b.s)
                         is MBlock.Bismillah -> Text(
-                            data.ar(1), style = mStyle, textAlign = TextAlign.Center,
+                            data.bismillah(indoPak), style = mStyle, textAlign = TextAlign.Center,
                             modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
                         )
                         is MBlock.Para -> MushafParagraph(b.tokens, mStyle, playing, onTap)

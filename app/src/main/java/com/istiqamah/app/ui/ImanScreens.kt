@@ -160,7 +160,7 @@ fun ImanLessonScreen(vm: AppVm, key: String, open: (String) -> Unit, onBack: () 
         }
         Spacer(Modifier.height(12.dp))
         LTitle("কুরআন থেকে")
-        lesson.ayat.forEach { r -> AyahBlock(data, r, open); Spacer(Modifier.height(8.dp)) }
+        lesson.ayat.forEach { r -> AyahBlock(data, r, open, p.quranScript == 0); Spacer(Modifier.height(8.dp)) }
         Spacer(Modifier.height(4.dp))
         LTitle("হাদিস থেকে")
         lesson.hadith.forEach { HadithBlock(it); Spacer(Modifier.height(8.dp)) }
@@ -237,7 +237,7 @@ private fun LTitle(t: String) {
 
 /** কুরআনের আয়াত — আরবি, বাংলা অর্থ, কুরআনে খোলার বোতাম */
 @Composable
-private fun AyahBlock(data: QuranData?, r: AyahRef, open: (String) -> Unit, bg: Color = Color.White) {
+private fun AyahBlock(data: QuranData?, r: AyahRef, open: (String) -> Unit, indoPak: Boolean, bg: Color = Color.White) {
     Column(Modifier.fillMaxWidth().background(bg, RoundedCornerShape(16.dp)).padding(14.dp)) {
         if (data == null) {
             Text("সূরা ${r.bn} — লোড হচ্ছে…", fontSize = 14.sp, color = Muted)
@@ -245,8 +245,9 @@ private fun AyahBlock(data: QuranData?, r: AyahRef, open: (String) -> Unit, bg: 
         }
         val ids = (r.from..r.to).map { data.index.idOf(r.surah, it) }
         Text(
-            ids.joinToString(" ") { data.ar(it) + " ۝" + com.istiqamah.app.core.QuranScript.digits(data.index.ayahNo(it)) },
-            fontFamily = AmiriQuran, fontSize = 23.sp, lineHeight = 46.sp, color = Ink,
+            if (indoPak) ids.joinToString(" ") { data.ip(it) }
+            else ids.joinToString(" ") { data.ar(it) + " ۝" + com.istiqamah.app.core.QuranScript.digits(data.index.ayahNo(it)) },
+            fontFamily = if (indoPak) IndoPak else AmiriQuran, fontSize = 23.sp, lineHeight = 46.sp, color = Ink,
             textAlign = TextAlign.Right, modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(6.dp))
@@ -286,7 +287,7 @@ fun AkhirahScreen(vm: AppVm, open: (String) -> Unit, onBack: () -> Unit) {
             ScreenHeader("আখিরাত কার্ড", "${Bn.num(pager.currentPage + 1)}/${Bn.num(Akhirah.CARDS.size)} · ভয় আর আশা — দুই ডানায়", onBack)
         }
         HorizontalPager(state = pager, modifier = Modifier.weight(1f)) { i ->
-            AkhirahPage(Akhirah.CARDS[i], data, open, isToday = i == start)
+            AkhirahPage(Akhirah.CARDS[i], data, open, isToday = i == start, indoPak = vm.prefs.quranScript == 0)
         }
         Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             TextButton(enabled = pager.currentPage > 0, onClick = { scope.launch { pager.animateScrollToPage(pager.currentPage - 1) } }) { Text("‹ আগের", color = Emerald800) }
@@ -299,13 +300,13 @@ fun AkhirahScreen(vm: AppVm, open: (String) -> Unit, onBack: () -> Unit) {
 }
 
 @Composable
-private fun AkhirahPage(c: AkhirahCard, data: QuranData?, open: (String) -> Unit, isToday: Boolean) {
+private fun AkhirahPage(c: AkhirahCard, data: QuranData?, open: (String) -> Unit, isToday: Boolean, indoPak: Boolean) {
     val ctx = LocalContext.current
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
         if (isToday) Text("আজকের কার্ড", fontSize = 13.sp, color = Gold, fontWeight = FontWeight.SemiBold)
         Text(c.title, fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Emerald800)
         Spacer(Modifier.height(8.dp))
-        c.ayah?.let { AyahBlock(data, it, open, WarnBg); Spacer(Modifier.height(8.dp)) }
+        c.ayah?.let { AyahBlock(data, it, open, indoPak, WarnBg); Spacer(Modifier.height(8.dp)) }
         Text(c.reflection, fontSize = 17.sp, lineHeight = 26.sp, color = Ink)
         Spacer(Modifier.height(12.dp))
         Column(Modifier.fillMaxWidth().background(HopeBg, RoundedCornerShape(16.dp)).padding(14.dp)) {
@@ -313,7 +314,7 @@ private fun AkhirahPage(c: AkhirahCard, data: QuranData?, open: (String) -> Unit
             Text(c.hope, fontSize = 17.sp, lineHeight = 26.sp, color = Ink)
         }
         Spacer(Modifier.height(8.dp))
-        c.hopeAyah?.let { AyahBlock(data, it, open, HopeBg); Spacer(Modifier.height(8.dp)) }
+        c.hopeAyah?.let { AyahBlock(data, it, open, indoPak, HopeBg); Spacer(Modifier.height(8.dp)) }
         c.hadith?.let { id ->
             val h = remember(id) { ContentRepo.byId(ctx, id) }
             h?.let { HadithBlock(id); Spacer(Modifier.height(8.dp)) }

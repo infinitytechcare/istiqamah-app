@@ -145,4 +145,12 @@ class ImanTest {
         assertTrue(plain === QuranScript.forFont(plain))
         assertEquals("١٢٣", QuranScript.digits(123))
     }
+
+    @Test fun indoPakTextHasEveryAyah() {
+        val lines = asset("quran_indopak.txt").split('\n').filter { it.isNotBlank() }
+        assertEquals(QuranIndex.TOTAL, lines.size)
+        assertTrue(lines[0].startsWith("بِسْمِ"))
+        // প্রতিটি আয়াতের শেষে গোল চিহ্ন (U+06DF) থাকে
+        assertTrue(lines.all { '\u06DF' in it })
+    }
 }

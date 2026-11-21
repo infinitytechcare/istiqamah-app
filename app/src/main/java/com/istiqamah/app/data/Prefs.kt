@@ -355,6 +355,11 @@ class Prefs(context: Context) {
         get() = sp.getInt("quran_mode", 0)
         set(v) = sp.edit().putInt("quran_mode", v.coerceIn(0, 1)).apply()
 
+    /** ০ = পাক-ভারত (ইন্দোপাক) লিপি — বাংলাদেশে প্রচলিত, ১ = মাদানি (উসমানি) */
+    var quranScript: Int
+        get() = sp.getInt("quran_script", 0)
+        set(v) = sp.edit().putInt("quran_script", v.coerceIn(0, 1)).apply()
+
     var quranArSize: Int
         get() = sp.getInt("quran_ar_size", 28)
         set(v) = sp.edit().putInt("quran_ar_size", v.coerceIn(20, 44)).apply()

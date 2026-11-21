@@ -35,6 +35,13 @@ val Amiri = FontFamily(
 /** কুরআন পাঠকের জন্য — উসমানি লিপির সব চিহ্ন ঠিকমতো বসে (SIL OFL) */
 val AmiriQuran = FontFamily(Font(R.font.amiri_quran, FontWeight.Normal))
 
+/**
+ * পাক-ভারত (ইন্দোপাক) লিপি — বাংলাদেশে প্রচলিত মুসহাফের মতো। QuranWBW.com-এর ফন্ট (Al Qalam ভিত্তিক),
+ * শুধু assets/quran_indopak.txt-এর পাঠের সাথে কাজ করে (আয়াত নম্বরের গোল চিহ্ন ফন্টেই আঁকা)।
+ * শর্ত: বিনামূল্যে, কৃতজ্ঞতা উল্লেখসহ, কোনো বদল ছাড়া — licenses/IndoPak-QuranWBW-Readme.txt
+ */
+val IndoPak = FontFamily(Font(R.font.indopak, FontWeight.Normal))
+
 private val base = Typography()
 
 private val AppTypography = Typography(
