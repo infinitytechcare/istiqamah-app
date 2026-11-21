@@ -24,7 +24,7 @@ class LogStore private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "istiqamah.db", null, DB_VERSION) {
 
     companion object {
-        private const val DB_VERSION = 4
+        private const val DB_VERSION = 5
 
         @Volatile private var instance: LogStore? = null
         fun get(context: Context): LogStore =
@@ -45,6 +45,13 @@ class LogStore private constructor(context: Context) :
         createV2(db)
         createV3(db)
         createV4(db)
+        createV5(db)
+    }
+
+    /** v0.9.5: সুন্নাত/নফল নামাজ (১২ রাকাত, বিতর, তাহাজ্জুদ, দোহা) আর নামাজের পর খুশুর মাপ */
+    private fun createV5(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS sunnah_log(date TEXT NOT NULL, slot INTEGER NOT NULL, PRIMARY KEY(date, slot))")
+        db.execSQL("CREATE TABLE IF NOT EXISTS khushu_log(date TEXT NOT NULL, prayer INTEGER NOT NULL, score INTEGER NOT NULL, PRIMARY KEY(date, prayer))")
     }
 
     /** v0.7: রোজার লগ — প্রতিদিন একটা অবস্থা */
@@ -91,6 +98,7 @@ class LogStore private constructor(context: Context) :
         if (oldVersion < 2) createV2(db)
         if (oldVersion < 3) createV3(db)
         if (oldVersion < 4) createV4(db)
+        if (oldVersion < 5) createV5(db)
     }
 
     // ---------- নামাজের লগ ----------
@@ -255,6 +263,42 @@ class LogStore private constructor(context: Context) :
         val out = HashMap<LocalDate, FastStatus>()
         readableDatabase.rawQuery("SELECT date, status FROM fast_log WHERE date BETWEEN ? AND ?", arrayOf(from.toString(), to.toString())).use { c ->
             while (c.moveToNext()) FastStatus.fromCode(c.getInt(1))?.let { out[LocalDate.parse(c.getString(0))] = it }
+        }
+        return out
+    }
+
+    // ---------- সুন্নাত ও খুশু (v0.9.5) ----------
+
+    fun setSunnah(date: LocalDate, slot: com.istiqamah.app.core.SunnahSlot, done: Boolean) {
+        val db = writableDatabase
+        if (done) db.insertWithOnConflict("sunnah_log", null, ContentValues().apply {
+            put("date", date.toString()); put("slot", slot.code)
+        }, SQLiteDatabase.CONFLICT_IGNORE)
+        else db.delete("sunnah_log", "date=? AND slot=?", arrayOf(date.toString(), slot.code.toString()))
+    }
+
+    fun sunnah(from: LocalDate, to: LocalDate): Map<LocalDate, Set<com.istiqamah.app.core.SunnahSlot>> {
+        val out = HashMap<LocalDate, MutableSet<com.istiqamah.app.core.SunnahSlot>>()
+        readableDatabase.rawQuery("SELECT date, slot FROM sunnah_log WHERE date BETWEEN ? AND ?", arrayOf(from.toString(), to.toString())).use { c ->
+            while (c.moveToNext()) com.istiqamah.app.core.SunnahSlot.fromCode(c.getInt(1))?.let {
+                out.getOrPut(LocalDate.parse(c.getString(0))) { HashSet() }.add(it)
+            }
+        }
+        return out
+    }
+
+    fun setKhushu(date: LocalDate, prayer: Prayer, score: Int) {
+        writableDatabase.insertWithOnConflict("khushu_log", null, ContentValues().apply {
+            put("date", date.toString()); put("prayer", prayer.ordinal); put("score", score.coerceIn(1, 3))
+        }, SQLiteDatabase.CONFLICT_REPLACE)
+    }
+
+    fun khushu(from: LocalDate, to: LocalDate): Map<LocalDate, Map<Prayer, Int>> {
+        val out = HashMap<LocalDate, MutableMap<Prayer, Int>>()
+        readableDatabase.rawQuery("SELECT date, prayer, score FROM khushu_log WHERE date BETWEEN ? AND ?", arrayOf(from.toString(), to.toString())).use { c ->
+            while (c.moveToNext()) Prayer.entries.getOrNull(c.getInt(1))?.let {
+                out.getOrPut(LocalDate.parse(c.getString(0))) { HashMap() }[it] = c.getInt(2)
+            }
         }
         return out
     }

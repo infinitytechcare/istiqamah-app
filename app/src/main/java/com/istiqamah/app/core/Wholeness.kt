@@ -11,6 +11,7 @@ import kotlin.math.roundToInt
 
 enum class AmalArea(val bn: String, val route: String?, val nextStep: String) {
     SALAH("সময়মতো নামাজ", null, "পরের ওয়াক্তটা আযানের ১৫ মিনিটের মধ্যে পড়ুন"),
+    SUNNAH("১২ রাকাত সুন্নাত", "ihsan", "আজ ফজরের আগের দুই রাকাত দিয়ে শুরু করুন"),
     QURAN("কুরআন", "reader", "আজ অন্তত এক পৃষ্ঠা পড়ুন"),
     AZKAR("সকাল-সন্ধ্যার যিকির", "azkar:MORNING", "আজ সকাল বা সন্ধ্যার যিকিরটা পড়ুন"),
     MUHASABA("রাতের মুহাসাবা", "muhasaba", "আজ রাতে ২ মিনিটের মুহাসাবা করুন"),
@@ -35,6 +36,8 @@ data class WholenessInput(
     /** গত ৪ সপ্তাহের কত সপ্তাহে সদকা লেখা আছে — সদকার ফিচার ব্যবহার না করলে null */
     val sadaqahWeeks: Int?,
     val imanLessons: Int,
+    /** ১২ রাকাত সুন্নাতের শতাংশ (গত [days] দিন) — ট্র্যাকার ব্যবহার না করলে null */
+    val sunnahPercent: Int? = null,
 )
 
 data class WholenessResult(val areas: List<AreaScore>, val overall: Int, val weakest: AreaScore?)
@@ -52,6 +55,7 @@ object Wholeness {
         val d = i.days
         val list = buildList {
             add(AreaScore(AmalArea.SALAH, (i.salahOnTime.coerceIn(0.0, 1.0) * 100).roundToInt(), "গত ${Bn.num(d)} দিন"))
+            i.sunnahPercent?.let { add(AreaScore(AmalArea.SUNNAH, it.coerceIn(0, 100), "${Bn.num(it.coerceIn(0, 100))}% রাকাত")) }
             i.quranDays?.let { add(AreaScore(AmalArea.QURAN, pct(it, d), "${Bn.num(it)}/${Bn.num(d)} দিন")) }
             add(AreaScore(AmalArea.AZKAR, pct(i.azkarDays, d), "${Bn.num(i.azkarDays)}/${Bn.num(d)} দিন"))
             add(AreaScore(AmalArea.MUHASABA, pct(i.muhasabaDays, d), "${Bn.num(i.muhasabaDays)}/${Bn.num(d)} দিন"))

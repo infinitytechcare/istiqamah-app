@@ -373,6 +373,27 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("quran_bold", true)
         set(v) = sp.edit().putBoolean("quran_bold", v).apply()
 
+    // ---------- v0.9.5: ইহসান ----------
+    /** আজ ট্যাবে ১২ রাকাতের কার্ড — null হলে ধাপ অনুযায়ী (ঈমান ধাপ থেকে) */
+    var sunnahCardOn: Boolean?
+        get() = if (sp.contains("sunnah_card")) sp.getBoolean("sunnah_card", false) else null
+        set(v) = sp.edit().apply { if (v == null) remove("sunnah_card") else putBoolean("sunnah_card", v) }.apply()
+
+    /** নামাজের পর "মন কতটা ছিল?" জিজ্ঞেস করা */
+    var khushuAsk: Boolean
+        get() = sp.getBoolean("khushu_ask", true)
+        set(v) = sp.edit().putBoolean("khushu_ask", v).apply()
+
+    /** ইহসান ধাপে তাহাজ্জুদ চালুর পরামর্শ আর দেখাব না */
+    var tahajjudTipOff: Boolean
+        get() = sp.getBoolean("tahajjud_tip_off", false)
+        set(v) = sp.edit().putBoolean("tahajjud_tip_off", v).apply()
+
+    /** এ সপ্তাহের গোপন আমল — "সপ্তাহ:key"; শুধু এ ফোনে, কোনো নোটিফিকেশনে দেখানো হয় না */
+    var secretDone: Set<String>
+        get() = sp.getStringSet("secret_done", emptySet()) ?: emptySet()
+        set(v) = sp.edit().putStringSet("secret_done", v).apply()
+
     // ---------- v0.9: ঈমানের পাঠ ----------
     /** কুইজ পার হওয়া পাঠের key */
     var imanDone: Set<String>

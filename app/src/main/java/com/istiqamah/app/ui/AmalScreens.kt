@@ -77,6 +77,14 @@ fun AmalScreen(vm: AppVm, open: (String) -> Unit, requestUnlock: (() -> Unit) ->
         Text("নামাজের পরের ধাপ — যিকির, নিজের হিসাব আর গুনাহ ছাড়ার লড়াই", fontSize = 14.sp, color = Muted)
         Spacer(Modifier.height(12.dp))
 
+        // v0.9.5: ইহসান
+        SectionCard(Modifier.clickable { open("ihsan") }) {
+            Text("ইহসান — আল্লাহর সাথে", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+            Text("১২ রাকাত সুন্নাত, বিতর-তাহাজ্জুদ-দোহা, নামাজে খুশুর মাপ, নামাজে যা পড়ি তার অর্থ, গোপন আমল",
+                fontSize = 14.sp, color = Muted)
+        }
+        Spacer(Modifier.height(12.dp))
+
         // v0.9: ঈমানের ৬ রুকন ও আখিরাত কার্ড
         SectionCard(Modifier.clickable { open("iman") }) {
             val done = vm.prefs.imanDone.count { com.istiqamah.app.core.Iman.byKey(it) != null }

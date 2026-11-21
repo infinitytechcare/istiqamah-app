@@ -61,6 +61,14 @@ data class TodayState(
     val weeklyGoal: String?,
     /** v0.9: সব আমল মিলিয়ে গত ৩০ দিনের ছবি */
     val wholeness: com.istiqamah.app.core.WholenessResult? = null,
+    /** v0.9.5: আজ কোন সুন্নাত/নফল পড়া হয়েছে */
+    val sunnahToday: Set<com.istiqamah.app.core.SunnahSlot> = emptySet(),
+    /** আজ ট্যাবে ১২ রাকাতের কার্ড দেখাব কিনা */
+    val showSunnah: Boolean = false,
+    /** যে ওয়াক্তের খুশু এখনো জানানো হয়নি */
+    val khushuPending: Prayer? = null,
+    /** ইহসান ধাপে পৌঁছেছেন কিন্তু তাহাজ্জুদের রিমাইন্ডার বন্ধ */
+    val suggestTahajjud: Boolean = false,
 ) {
     val isFriday: Boolean get() = today.dayOfWeek == DayOfWeek.FRIDAY
     fun prayerName(p: Prayer) = if (isFriday && p == Prayer.DHUHR) "জুমা / যোহর" else p.bn
@@ -158,6 +166,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 naflFasts = nafl.takeIf { prefs.fastingOn || it > 0 },
                 sadaqahWeeks = weeks.takeIf { prefs.sadaqahDay != null || log.isNotEmpty() },
                 imanLessons = prefs.imanDone.count { com.istiqamah.app.core.Iman.byKey(it) != null },
+                sunnahPercent = store.sunnah(from, today).takeIf { it.isNotEmpty() }?.let { com.istiqamah.app.core.Ihsan.percent(it, today, days.toInt()) },
             ),
         )
     }
@@ -196,6 +205,13 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             muhasabaStreak = muhStreak,
             weeklyGoal = goal,
             wholeness = runCatching { wholeness(store, logs, today, muhDates) }.getOrNull(),
+            sunnahToday = store.sunnah(today, today)[today].orEmpty(),
+            showSunnah = prefs.sunnahCardOn ?: (stage.stage.number >= com.istiqamah.app.core.Stage.IMAN.number),
+            khushuPending = if (prefs.khushuAsk) com.istiqamah.app.core.Ihsan.pendingKhushu(
+                logs[today] ?: DayLog(today, emptyMap()), store.khushu(today, today)[today]?.keys.orEmpty(),
+            ) else null,
+            suggestTahajjud = stage.stage == com.istiqamah.app.core.Stage.IHSAN && !prefs.tahajjudTipOff &&
+                com.istiqamah.app.core.NotifKind.TAHAJJUD !in prefs.routine,
         )
     }
 
@@ -209,6 +225,27 @@ class AppVm(app: Application) : AndroidViewModel(app) {
     fun checkIn(date: LocalDate, prayer: Prayer, status: PrayerStatus?) {
         viewModelScope.launch {
             withContext(Dispatchers.IO) { Engine.checkIn(ctx, date, prayer, status) }
+            refresh()
+        }
+    }
+
+    /** সুন্নাত/নফল পড়া হলো বা বাতিল */
+    fun toggleSunnah(slot: com.istiqamah.app.core.SunnahSlot) {
+        val t = todayState ?: return
+        val done = slot !in t.sunnahToday
+        todayState = t.copy(sunnahToday = if (done) t.sunnahToday + slot else t.sunnahToday - slot)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { LogStore.get(ctx).setSunnah(t.today, slot, done) }
+            refresh()
+        }
+    }
+
+    /** নামাজের পর খুশুর মাপ */
+    fun rateKhushu(prayer: Prayer, score: Int) {
+        val t = todayState ?: return
+        todayState = t.copy(khushuPending = null)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { LogStore.get(ctx).setKhushu(t.today, prayer, score) }
             refresh()
         }
     }

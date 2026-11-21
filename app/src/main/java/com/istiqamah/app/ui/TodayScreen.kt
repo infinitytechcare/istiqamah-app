@@ -133,6 +133,10 @@ fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, open: (String) -> Un
             }
         }
 
+        // v0.9.5: খুশুর মাপ, ইহসান ধাপে তাহাজ্জুদ, ১২ রাকাত
+        t.khushuPending?.let { pr -> item { KhushuPromptCard(vm, pr) } }
+        if (t.suggestTahajjud) item { TahajjudTipCard(vm) }
+        if (t.showSunnah) item { SunnahTodayCard(vm, t.sunnahToday, open) }
         t.wholeness?.let { w -> item { WholenessCard(w, open) } }
 
         // এখন কোন আযকারের সময় / ইশার পর মুহাসাবা

@@ -228,6 +228,12 @@ object Bn {
     private val hijriMonths = listOf("মুহাররম", "সফর", "রবিউল আউয়াল", "রবিউস সানি", "জুমাদাল উলা", "জুমাদাল আখিরাহ", "রজব", "শাবান", "রমজান", "শাওয়াল", "জিলকদ", "জিলহজ")
     private val weekdays = listOf("সোমবার", "মঙ্গলবার", "বুধবার", "বৃহস্পতিবার", "শুক্রবার", "শনিবার", "রবিবার")
 
+    /** "সোম", "মঙ্গল" … */
+    fun weekdayShort(d: LocalDate): String = weekdays[d.dayOfWeek.value - 1].removeSuffix("বার")
+
+    /** "ফজরের", "ইশার" — ষষ্ঠী বিভক্তি */
+    fun of(word: String): String = if (word.endsWith("া")) word + "র" else word + "ের"
+
     fun date(d: LocalDate): String = "${weekdays[d.dayOfWeek.value - 1]}, ${num(d.dayOfMonth)} ${months[d.monthValue - 1]}"
     fun monthYear(d: LocalDate): String = "${months[d.monthValue - 1]} ${num(d.year)}"
 
