@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.CalendarMonth
 import androidx.compose.material.icons.outlined.Settings
@@ -32,6 +33,7 @@ private data class Tab(val label: String, val icon: ImageVector)
 
 private val tabs = listOf(
     Tab("আজ", Icons.Outlined.Today),
+    Tab("কুরআন", Icons.AutoMirrored.Outlined.MenuBook),
     Tab("আমল", Icons.Outlined.AutoAwesome),
     Tab("ক্যালেন্ডার", Icons.Outlined.CalendarMonth),
     Tab("সেটিংস", Icons.Outlined.Settings),
@@ -39,7 +41,7 @@ private val tabs = listOf(
 
 /**
  * পুরো অ্যাপের মূল: অনবোর্ডিং, নিচের ট্যাব, আর ওপরের পূর্ণ পর্দা।
- * পূর্ণ পর্দার রুট: "azkar:MORNING" · "muhasaba" · "sins" · "weekly" · "battery" · "home" · "keys" · "prime"
+ * পূর্ণ পর্দার রুট: "azkar:MORNING" · "muhasaba" · "sins" · "weekly" · "battery" · "home" · "keys" · "prime" · "jamaat" · "reader[:পৃষ্ঠা]"
  */
 @Composable
 fun App(
@@ -96,6 +98,7 @@ fun App(
         r == "keys" -> EaseKeysScreen(onOpenContent = { content = it }, onBack = back)
         r == "prime" -> PrimeScreen(vm, back)
         r == "jamaat" -> JamaatScreen(vm, back)
+        r != null && (r == "reader" || r.startsWith("reader:")) -> QuranReaderScreen(vm, r.removePrefix("reader").removePrefix(":").toIntOrNull(), back)
         else -> Scaffold(
             containerColor = Cream,
             bottomBar = {
@@ -117,9 +120,10 @@ fun App(
             Box(Modifier.fillMaxSize().padding(bottom = pad.calculateBottomPadding())) {
                 when (tab) {
                     0 -> TodayScreen(vm, onOpenContent = { content = it }, open = open)
-                    1 -> AmalScreen(vm, open, requestUnlock)
-                    2 -> CalendarScreen(vm)
-                    3 -> SettingsScreen(vm, onOpenBattery = { route = "battery" }, requestUnlock = requestUnlock, onOpenProfile = { route = "jamaat" })
+                    1 -> QuranHomeScreen(vm, open)
+                    2 -> AmalScreen(vm, open, requestUnlock)
+                    3 -> CalendarScreen(vm)
+                    4 -> SettingsScreen(vm, onOpenBattery = { route = "battery" }, requestUnlock = requestUnlock, onOpenProfile = { route = "jamaat" })
                 }
             }
         }

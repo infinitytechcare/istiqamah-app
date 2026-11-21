@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- v0.4: ঘরে-একা ওয়াক্তে অ্যালার্ম-ঘড়ির মতো পুরো পর্দার ডাক (Android 14+ এ ইউজার আলাদা করে অনুমতি দেন) -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <!-- v0.6: শুধু কুরআনের তিলাওয়াত (everyayah.com) নামানোর জন্য; কোনো ব্যক্তিগত তথ্য পাঠানো হয় না -->
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:allowBackup="false"

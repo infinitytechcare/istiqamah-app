@@ -46,7 +46,8 @@ enum class Amal(
     SALAH("salah_virtue", "salah_warning", "পড়লে লাভ", "না পড়লে ক্ষতি"),
     DHIKR("gain_dhikr", "loss_dhikr", "যিকিরের লাভ", "আল্লাহকে ভুলে থাকার ক্ষতি"),
     MUHASABA("gain_muhasaba", "loss_muhasaba", "হিসাব নিলে লাভ", "গাফেল থাকার ক্ষতি"),
-    JUMUAH("gain_jumuah", "loss_jumuah", "জুমার লাভ", "জুমা ছাড়ার ক্ষতি");
+    JUMUAH("gain_jumuah", "loss_jumuah", "জুমার লাভ", "জুমা ছাড়ার ক্ষতি"),
+    QURAN("gain_quran", "loss_quran", "কুরআন পড়ার লাভ", "কুরআন ছেড়ে রাখার ক্ষতি");
 
     companion object {
         /** ওয়াক্ত-নির্দিষ্ট ট্যাগ, যেমন gain_fajr / loss_isha (যোহর-মাগরিবে নেই, সাধারণটাই) */

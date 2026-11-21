@@ -10,6 +10,7 @@ import com.istiqamah.app.core.SinEvent
 import com.istiqamah.app.core.SinGoal
 import com.istiqamah.app.core.TriggerTag
 import com.istiqamah.app.core.Prayer
+import com.istiqamah.app.core.ReadEvent
 import com.istiqamah.app.core.PrayerStatus
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -22,7 +23,7 @@ class LogStore private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "istiqamah.db", null, DB_VERSION) {
 
     companion object {
-        private const val DB_VERSION = 2
+        private const val DB_VERSION = 3
 
         @Volatile private var instance: LogStore? = null
         fun get(context: Context): LogStore =
@@ -41,6 +42,13 @@ class LogStore private constructor(context: Context) :
         db.execSQL("CREATE TABLE qaza_debt(prayer INTEGER PRIMARY KEY, remaining INTEGER NOT NULL)")
         db.execSQL("CREATE TABLE content_seen(content_id TEXT PRIMARY KEY, shown_on TEXT NOT NULL)")
         createV2(db)
+        createV3(db)
+    }
+
+    /** v0.6: কুরআন পড়ার লগ — প্রতি বসায় কোন আয়াত থেকে কোন আয়াতের আগ পর্যন্ত */
+    private fun createV3(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS quran_read(id INTEGER PRIMARY KEY AUTOINCREMENT, date TEXT NOT NULL, from_id INTEGER NOT NULL, to_id INTEGER NOT NULL)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS quran_read_date ON quran_read(date)")
     }
 
     /** v0.2.0: আযকার, মুহাসাবা, গুনাহ ছাড়ার ট্র্যাকার। গোপন লেখা (title, note) [Vault] দিয়ে এনক্রিপ্ট করা। */
@@ -74,6 +82,7 @@ class LogStore private constructor(context: Context) :
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
         // পুরনো ডেটা মুছবেন না — শুধু নতুন টেবিল যোগ
         if (oldVersion < 2) createV2(db)
+        if (oldVersion < 3) createV3(db)
     }
 
     // ---------- নামাজের লগ ----------
@@ -196,6 +205,23 @@ class LogStore private constructor(context: Context) :
         readableDatabase.rawQuery("SELECT date FROM muhasaba WHERE date BETWEEN ? AND ?", arrayOf(from.toString(), to.toString())).use { c ->
             while (c.moveToNext()) out += LocalDate.parse(c.getString(0))
         }
+        return out
+    }
+
+    // ---------- দৈনিক কুরআন ----------
+
+    fun addRead(date: LocalDate, from: Int, to: Int) {
+        if (to <= from) return
+        writableDatabase.insert("quran_read", null, ContentValues().apply {
+            put("date", date.toString()); put("from_id", from); put("to_id", to)
+        })
+    }
+
+    fun reads(from: LocalDate, to: LocalDate): List<ReadEvent> {
+        val out = ArrayList<ReadEvent>()
+        readableDatabase.rawQuery(
+            "SELECT date, from_id, to_id FROM quran_read WHERE date BETWEEN ? AND ? ORDER BY id", arrayOf(from.toString(), to.toString()),
+        ).use { c -> while (c.moveToNext()) out += ReadEvent(LocalDate.parse(c.getString(0)), c.getInt(1), c.getInt(2)) }
         return out
     }
 

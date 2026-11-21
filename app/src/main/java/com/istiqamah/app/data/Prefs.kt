@@ -13,6 +13,9 @@ import com.istiqamah.app.core.Stage
 import com.istiqamah.app.core.StageState
 import com.istiqamah.app.core.DayOverride
 import com.istiqamah.app.core.Gender
+import com.istiqamah.app.core.QuranGoal
+import com.istiqamah.app.core.QuranIndex
+import com.istiqamah.app.core.QuranUnit
 import com.istiqamah.app.core.JamaatMode
 import com.istiqamah.app.core.JamaatRule
 import com.istiqamah.app.core.JamaatSettings
@@ -149,6 +152,7 @@ class Prefs(context: Context) {
             dailyAyahAt, azkarReminders, muhasabaAt, jumuahReminders, weeklyReminders,
             routine = routine, qailulaBeforeDhuhr = qailulaBeforeDhuhr,
             dailyReport = dailyReport && partnerName.isNotBlank(),
+            quran = quranOn, quranAt = quranAt,
         )
 
     // ---------- v0.3: সুন্নত দিনলিপি ----------
@@ -206,6 +210,52 @@ class Prefs(context: Context) {
             return d to g
         }
         set(v) = sp.edit().putString("wgoal_date", v?.first?.toString()).putString("wgoal", v?.second).apply()
+
+    // ---------- v0.6: দৈনিক কুরআন ----------
+    var quranOn: Boolean
+        get() = sp.getBoolean("quran_on", true)
+        set(v) = sp.edit().putBoolean("quran_on", v).apply()
+
+    var quranGoal: QuranGoal
+        get() = QuranGoal(QuranUnit.fromCode(sp.getInt("quran_unit", QuranUnit.PAGE.code)), sp.getInt("quran_amount", 1))
+        set(v) = sp.edit().putInt("quran_unit", v.unit.code).putInt("quran_amount", v.amount).apply()
+
+    /** null = ফজরের পরে (সূর্যোদয়ের ১৫ মিনিট আগে) */
+    var quranAt: LocalTime?
+        get() = sp.getInt("quran_at", -1).takeIf { it >= 0 }?.let { LocalTime.of(it / 60, it % 60) }
+        set(v) = sp.edit().putInt("quran_at", v?.let { it.hour * 60 + it.minute } ?: -1).apply()
+
+    /** খতমের পরের আয়াত (১–৬২৩৬) */
+    var quranBookmark: Int
+        get() = sp.getInt("quran_bm", 1).coerceIn(1, QuranIndex.TOTAL)
+        set(v) = sp.edit().putInt("quran_bm", v.coerceIn(1, QuranIndex.TOTAL)).apply()
+
+    /** "আল-বাকারা ২:১৪২ · পৃষ্ঠা ২২" — নোটিফিকেশনে পুরো কুরআন লোড না করে দেখানোর জন্য */
+    var quranBookmarkLabel: String
+        get() = sp.getString("quran_bm_label", "আল-ফাতিহা ১:১ · পৃষ্ঠা ১") ?: ""
+        set(v) = sp.edit().putString("quran_bm_label", v).apply()
+
+    var quranKhatm: Int
+        get() = sp.getInt("quran_khatm", 0)
+        set(v) = sp.edit().putInt("quran_khatm", v).apply()
+
+    /** কোন দিনগুলোতে লক্ষ্য পূরণ হয়েছে (শেষ ১০ দিন রাখি) — রিমাইন্ডার বন্ধ করার জন্য */
+    var quranDoneDates: Set<LocalDate>
+        get() = (sp.getStringSet("quran_done", emptySet()) ?: emptySet()).mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }.toSet()
+        set(v) = sp.edit().putStringSet("quran_done", v.sortedDescending().take(10).map { it.toString() }.toSet()).apply()
+
+    var reciter: Int
+        get() = sp.getInt("reciter", 0)
+        set(v) = sp.edit().putInt("reciter", v).apply()
+
+    var quranShowBn: Boolean
+        get() = sp.getBoolean("quran_bn", true)
+        set(v) = sp.edit().putBoolean("quran_bn", v).apply()
+
+    /** মুখস্থের জন্য প্রতিটি আয়াত কতবার বাজবে */
+    var quranRepeat: Int
+        get() = sp.getInt("quran_repeat", 1)
+        set(v) = sp.edit().putInt("quran_repeat", v.coerceIn(1, 20)).apply()
 
     // ---------- v0.5: পুরুষ/মহিলা, জামাত, বিরতি, নীরব রিমাইন্ডার ----------
     var gender: Gender

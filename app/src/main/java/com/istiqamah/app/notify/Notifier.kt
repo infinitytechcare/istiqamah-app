@@ -406,6 +406,20 @@ object Notifier {
             }
             NotifKind.BREAKFAST, NotifKind.QAILULA, NotifKind.DINNER, NotifKind.SLEEP_PREP,
             NotifKind.DUHA, NotifKind.TAHAJJUD, NotifKind.FAST_EVE -> routine(ctx, kind, date, id)
+            NotifKind.QURAN_DAILY, NotifKind.QURAN_LOSS -> {
+                val prefs = Prefs(ctx)
+                if (date in prefs.quranDoneDates) return
+                val where = "👉 এখান থেকে: ${prefs.quranBookmarkLabel}"
+                if (kind == NotifKind.QURAN_DAILY) {
+                    single("আজকের কুরআন — ${prefs.quranGoal.bn}", Amal.QURAN, gain = true, intro = where, route = "reader", salt = 7)
+                } else {
+                    cancelExtra(NotifKind.QURAN_DAILY)
+                    single(
+                        "আজকের কুরআন এখনো পড়া হয়নি", Amal.QURAN, gain = false, intro = where, route = "reader", salt = 8,
+                        hope = "অল্প হলেও পড়ুন — আটকে আটকে পড়লেও দ্বিগুণ সওয়াব।",
+                    )
+                }
+            }
             NotifKind.PAUSE_CHECK -> {
                 // কারণ কখনো লেখা হয় না — শুধু "বিরতি"
                 val from = Prefs(ctx).pausedFrom ?: return
@@ -498,6 +512,10 @@ object Notifier {
     }
 
     /** একটা ওয়াক্তের সব নোটিফিকেশন সরিয়ে দেয় (চেক-ইনের পর) */
+    /** নামাজের বাইরের একটা নোটিফিকেশন সরানো (যেমন কুরআনের লক্ষ্য পূরণ হলে) */
+    fun cancelExtra(ctx: Context, date: LocalDate, kind: NotifKind) =
+        NotificationManagerCompat.from(ctx).cancel(PlannedNotif(date, null, kind, Engine.now(ctx)).id)
+
     fun cancelFor(ctx: Context, date: LocalDate, prayer: Prayer) {
         val nm = NotificationManagerCompat.from(ctx)
         for (k in NotifKind.entries) nm.cancel(PlannedNotif(date, prayer, k, Engine.now(ctx)).id)

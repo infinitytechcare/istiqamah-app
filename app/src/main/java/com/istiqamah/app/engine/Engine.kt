@@ -23,6 +23,8 @@ import com.istiqamah.app.core.PrayerTimesCalculator
 import com.istiqamah.app.core.PrayerWindow
 import com.istiqamah.app.core.DayOverride
 import com.istiqamah.app.core.Situation
+import com.istiqamah.app.core.QuranProgress
+import com.istiqamah.app.data.QuranData
 import com.istiqamah.app.core.Gender
 import com.istiqamah.app.core.Jamaat
 import com.istiqamah.app.core.JamaatTime
@@ -136,6 +138,7 @@ object Engine {
                 leadMin = prefs.jamaatLead.toLong(),
                 pausedFrom = prefs.pausedFrom,
                 silentRepeat = prefs.silentRepeat,
+                quranDone = prefs.quranDoneDates,
             )
         )
         val ids = HashSet<String>()
@@ -199,6 +202,44 @@ object Engine {
             .putExtra(EXTRA_TEST, true)
         val pi = PendingIntent.getBroadcast(ctx, RC_TEST, i, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
         setAlarm(ctx, am, RC_TEST, p.fireAt.toInstant().toEpochMilli(), pi)
+    }
+
+    // ---------- v0.6: দৈনিক কুরআন ----------
+
+    /**
+     * এক বসার পড়া লগ করা। বুকমার্ক এগোয় শুধু তখন, যখন পড়া বুকমার্ক থেকে শুরু (ধারাবাহিক খতম) —
+     * অন্য জায়গা (যেমন জুমায় সূরা কাহফ) পড়লে লক্ষ্যে গোনা হয়, বুকমার্ক নড়ে না।
+     * @return খতম হলো কি না
+     */
+    fun logQuranRead(ctx: Context, data: QuranData, from: Int, to: Int, moveBookmark: Boolean): Boolean {
+        val prefs = Prefs(ctx)
+        val today = today(ctx)
+        val store = LogStore.get(ctx)
+        store.addRead(today, from, to)
+        var khatm = false
+        if (moveBookmark) {
+            val (bm, done) = QuranProgress.advance(to)
+            khatm = done
+            if (done) prefs.quranKhatm = prefs.quranKhatm + 1
+            prefs.quranBookmark = bm
+            prefs.quranBookmarkLabel = data.label(bm)
+        }
+        if (QuranProgress.isDone(today, store.reads(today, today), data.index, prefs.quranGoal)) {
+            prefs.quranDoneDates = prefs.quranDoneDates + today
+            Notifier.cancelExtra(ctx, today, NotifKind.QURAN_DAILY)
+            Notifier.cancelExtra(ctx, today, NotifKind.QURAN_LOSS)
+        }
+        reschedule(ctx)
+        return khatm
+    }
+
+    /** লক্ষ্য বদলালে আজকের "পূরণ" আবার হিসাব */
+    fun recheckQuranToday(ctx: Context, data: QuranData) {
+        val prefs = Prefs(ctx)
+        val today = today(ctx)
+        val done = QuranProgress.isDone(today, LogStore.get(ctx).reads(today, today), data.index, prefs.quranGoal)
+        prefs.quranDoneDates = if (done) prefs.quranDoneDates + today else prefs.quranDoneDates - today
+        reschedule(ctx)
     }
 
     // ---------- v0.5: জামাত ও বিরতি ----------

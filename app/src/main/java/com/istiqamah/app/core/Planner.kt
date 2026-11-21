@@ -77,7 +77,13 @@ enum class NotifKind(val isPrayer: Boolean, val priority: Int) {
     /** (ঐচ্ছিক) চেক-ইন না করা পর্যন্ত প্রতি ১০ মিনিটে শব্দ ছাড়া — Planner শুধু পরেরটা বসায় */
     SILENT_REPEAT(true, 0),
     /** (মহিলা) বিরতির ৩য় দিন থেকে দিনে একবার: বিরতি শেষ হলে জানান */
-    PAUSE_CHECK(false, 1);
+    PAUSE_CHECK(false, 1),
+
+    // ---- v0.6: দৈনিক কুরআন ----
+    /** ফজরের পরে (বা বাছাই করা সময়ে): আজকের পড়া — বড় পুরস্কার */
+    QURAN_DAILY(false, 1),
+    /** ইশার পরে, আজকের লক্ষ্য পূরণ না হলে: ক্ষতি + আশা */
+    QURAN_LOSS(false, 1);
 
     val isHomeNudge: Boolean get() = this == HOME_NUDGE_1 || this == HOME_NUDGE_2 || this == HOME_NUDGE_3
 
@@ -121,6 +127,9 @@ data class ExtraReminders(
     val qailulaBeforeDhuhr: Boolean = false,
     /** v0.4: জবাবদিহি বন্ধুকে দৈনিক হিসাব পাঠানোর রিমাইন্ডার */
     val dailyReport: Boolean = false,
+    /** v0.6: দৈনিক কুরআন; quranAt null = ফজরের পরে (সূর্যোদয়ের ১৫ মিনিট আগে) */
+    val quran: Boolean = false,
+    val quranAt: LocalTime? = null,
 )
 
 data class PlannerInput(
@@ -148,6 +157,8 @@ data class PlannerInput(
     val pausedFrom: LocalDate? = null,
     /** চেক-ইন না করা পর্যন্ত প্রতি ১০ মিনিটে নীরব রিমাইন্ডার */
     val silentRepeat: Boolean = false,
+    /** v0.6: কোন দিনের কুরআনের লক্ষ্য পূরণ হয়েছে */
+    val quranDone: Set<LocalDate> = emptySet(),
 )
 
 object Planner {
@@ -219,6 +230,7 @@ object Planner {
                 }
             }
             pauseCheckFor(date, windows, input)?.takeIf { it.fireAt.isAfter(input.now) }?.let { out += it }
+            out += quranFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += extrasFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += routineFor(date, windows, input.extras).filter { it.fireAt.isAfter(input.now) }
             reportFor(date, windows, input.extras)?.takeIf { it.fireAt.isAfter(input.now) }?.let { out += it }
@@ -337,6 +349,23 @@ object Planner {
             t = t.plusMinutes(SILENT_EVERY_MIN)
         }
         return null
+    }
+
+    /**
+     * দৈনিক কুরআন: ফজরের পরে (সূর্যোদয়ের ১৫ মিনিট আগে) বা বাছাই করা সময়ে পুরস্কার;
+     * ইশা শুরুর ৪৫ মিনিট পরে (ইশার শেষের আগে) লক্ষ্য পূরণ না হলে ক্ষতি। লক্ষ্য পূরণ হলে কোনোটাই নয়।
+     */
+    fun quranFor(date: LocalDate, windows: List<PrayerWindow>, input: PlannerInput): List<PlannedNotif> {
+        val ex = input.extras
+        if (!ex.quran || date in input.quranDone) return emptyList()
+        val fajr = windows.first { it.prayer == Prayer.FAJR }
+        val isha = windows.first { it.prayer == Prayer.ISHA }
+        val daily = ex.quranAt?.let { date.atTime(it).atZone(fajr.start.zone) } ?: fajr.end.minusMinutes(15)
+        val loss = minOf(isha.start.plusMinutes(45), isha.end.minusMinutes(10))
+        return listOfNotNull(
+            PlannedNotif(date, null, NotifKind.QURAN_DAILY, daily),
+            PlannedNotif(date, null, NotifKind.QURAN_LOSS, loss).takeIf { it.fireAt.isAfter(daily.plusMinutes(60)) },
+        )
     }
 
     /** বিরতির ৩য় দিন থেকে যোহরের ৩০ মিনিট পরে একবার — "বিরতি শেষ হলে জানান" */

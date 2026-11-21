@@ -27,6 +27,8 @@ REQUIRED_TAGS = {
     "alone": 4, "lazy": 3, "ease": 5, "home": 2, "sadaqah": 1,
     # পুরুষ/মহিলা (v0.5)
     "men": 5, "women": 3, "jamaah": 4, "jamaah_miss": 2, "early": 1,
+    # দৈনিক কুরআন (v0.6)
+    "gain_quran": 6, "loss_quran": 2,
 }
 TONES = {"gentle", "encourage", "serious", "hope"}
 MAX_SHORT = 140  # নোটিফিকেশনে এক নজরে পড়ার মতো
