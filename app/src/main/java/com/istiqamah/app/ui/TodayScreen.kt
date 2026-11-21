@@ -140,6 +140,15 @@ fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, open: (String) -> Un
         t.akhlaqAction?.let { (a, act) -> item { AkhlaqTodayCard(vm, a, act, t.akhlaqDoneToday, open) } }
         if (t.showFamily) item { FamilyTodayCard(vm, t.spouseAct, t.kidsSalah, open) }
         if (t.showIlm) item { IlmTodayCard(t.hifzDue, t.ilmDoneToday, open) }
+        t.companions?.let { n ->
+            item {
+                Card16(Modifier.clickable { open("companions") }) {
+                    Text("পথের তিন সঙ্গী — আপনার আছে ${Bn.num(n)}/৩", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+                    Text("অ্যাপ শুধু সাহায্যকারী। আসল: একজন আলেম, ভালো মানুষের সঙ্গ, আর মসজিদ ›", fontSize = 14.sp, color = Muted)
+                    TextButton(onClick = { vm.prefs.companionsTipOff = true; vm.refresh() }) { Text("আর দেখাবেন না", color = Muted, fontSize = 12.sp) }
+                }
+            }
+        }
         t.wholeness?.let { w -> item { WholenessCard(w, open) } }
 
         // এখন কোন আযকারের সময় / ইশার পর মুহাসাবা

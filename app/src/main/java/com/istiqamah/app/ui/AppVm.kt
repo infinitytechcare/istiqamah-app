@@ -81,6 +81,8 @@ data class TodayState(
     val hifzDue: List<String> = emptyList(),
     val ilmDoneToday: Boolean = false,
     val showIlm: Boolean = false,
+    /** v0.13: পথের তিন সঙ্গীর কয়টি আছে (কার্ড বন্ধ থাকলে null) */
+    val companions: Int? = null,
 ) {
     val isFriday: Boolean get() = today.dayOfWeek == DayOfWeek.FRIDAY
     fun prayerName(p: Prayer) = if (isFriday && p == Prayer.DHUHR) "জুমা / যোহর" else p.bn
@@ -229,6 +231,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             akhlaqDoneToday = today in prefs.akhlaqDone,
             spouseAct = if (prefs.marital == com.istiqamah.app.core.Marital.MARRIED) com.istiqamah.app.core.Family.spouseActFor(prefs.gender, today) else null,
             kidsSalah = prefs.children.filter { com.istiqamah.app.core.Family.prays(it, today) }.map { it to prefs.childSalah(it.id)[today] },
+            companions = prefs.companionsDone.size.takeIf { it < 3 && !prefs.companionsTipOff },
             hifzDue = com.istiqamah.app.core.Ilm.dueToday(prefs.hifz, today),
             ilmDoneToday = today in prefs.ilmLog,
             showIlm = prefs.ilmToday && (prefs.hifz.isNotEmpty() || prefs.ilmLog.isNotEmpty() || prefs.ilmAt != null),

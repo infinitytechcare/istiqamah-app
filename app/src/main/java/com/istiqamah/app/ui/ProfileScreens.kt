@@ -291,6 +291,7 @@ fun ProfileTodayCard(vm: AppVm, open: (String) -> Unit) {
             Text("বিরতি চলছে · ${Bn.num(Pause.dayNumber(today, p.pausedFrom!!).toInt())}তম দিন", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Emerald800)
             Text("নামাজের রিমাইন্ডার বন্ধ। যিকির ও দোয়া চালু থাকুক।", fontSize = 14.sp, color = Muted)
             TextButton(onClick = { p.pausedFrom = null; thread { Engine.endPause(ctx) }; vm.settingsChanged() }) { Text("বিরতি শেষ — নামাজ শুরু ›", color = Emerald700) }
+            TextButton(onClick = { open("masail:haydh") }) { Text("এ সময়ের মাসআলা ›", color = Muted) }
         }
         else -> {}
     }

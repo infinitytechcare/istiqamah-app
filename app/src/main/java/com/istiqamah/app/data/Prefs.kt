@@ -374,6 +374,67 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("quran_bold", true)
         set(v) = sp.edit().putBoolean("quran_bold", v).apply()
 
+    // ---------- v0.13: মাসআলা ও পথের সঙ্গী ----------
+    /** যে মাসআলার পাতাগুলো "শিখেছি" */
+    var masailDone: Set<String>
+        get() = sp.getStringSet("masail_done", emptySet()) ?: emptySet()
+        set(v) = sp.edit().putStringSet("masail_done", v).apply()
+
+    /** পথের তিন সঙ্গীর কোনগুলো আছে */
+    var companionsDone: Set<String>
+        get() = sp.getStringSet("companions_done", emptySet()) ?: emptySet()
+        set(v) = sp.edit().putStringSet("companions_done", v).apply()
+
+    /** আজ ট্যাবে "পথের তিন সঙ্গী" কার্ড আর দেখাব না */
+    var companionsTipOff: Boolean
+        get() = sp.getBoolean("companions_tip_off", false)
+        set(v) = sp.edit().putBoolean("companions_tip_off", v).apply()
+
+    /** আলেমকে জিজ্ঞেস করার প্রশ্নের খাতা — এনক্রিপ্ট করে */
+    var questions: List<com.istiqamah.app.core.AlimQuestion>
+        get() = runCatching {
+            val a = org.json.JSONArray(secret("questions").ifEmpty { "[]" })
+            (0 until a.length()).map { i ->
+                val o = a.getJSONObject(i)
+                com.istiqamah.app.core.AlimQuestion(o.getLong("id"), o.optString("q"), o.optString("a"), LocalDate.parse(o.getString("d")), o.optBoolean("done"))
+            }
+        }.getOrDefault(emptyList())
+        set(v) = setSecret("questions", org.json.JSONArray().apply {
+            v.forEach { q -> put(org.json.JSONObject().apply { put("id", q.id); put("q", q.text); put("a", q.answer); put("d", q.asked.toString()); put("done", q.done) }) }
+        }.toString())
+
+    /** ওসিয়তের খসড়া — এনক্রিপ্ট করে */
+    var wasiyyah: com.istiqamah.app.core.WasiyyahDraft
+        get() = runCatching {
+            val o = org.json.JSONObject(secret("wasiyyah").ifEmpty { return com.istiqamah.app.core.WasiyyahDraft() })
+            val d = com.istiqamah.app.core.WasiyyahDraft()
+            com.istiqamah.app.core.WasiyyahDraft(
+                o.optString("debts"), o.optString("amanah"), o.optString("qaza"), o.optString("charity"),
+                o.optString("burial", d.burial), o.optString("advice", d.advice), o.optString("contacts"),
+            )
+        }.getOrDefault(com.istiqamah.app.core.WasiyyahDraft())
+        set(v) = setSecret("wasiyyah", org.json.JSONObject().apply {
+            put("debts", v.debts); put("amanah", v.amanah); put("qaza", v.qaza); put("charity", v.charity)
+            put("burial", v.burial); put("advice", v.advice); put("contacts", v.contacts)
+        }.toString())
+
+    /** শোকরের খাতা: দিনে তিনটি নিয়ামত — এনক্রিপ্ট করে (শেষ ৬০ দিন) */
+    var shukr: Map<LocalDate, List<String>>
+        get() = runCatching {
+            val o = org.json.JSONObject(secret("shukr").ifEmpty { "{}" })
+            o.keys().asSequence().associate { k -> LocalDate.parse(k) to o.getJSONArray(k).let { a -> (0 until a.length()).map { a.getString(it) } } }
+        }.getOrDefault(emptyMap())
+        set(v) = setSecret("shukr", org.json.JSONObject().apply {
+            v.keys.sortedDescending().take(60).forEach { d -> put(d.toString(), org.json.JSONArray(v.getValue(d))) }
+        }.toString())
+
+    /** এ সপ্তাহে মুসলিমের ছয় হকের কোনগুলো আদায় করেছি: "সপ্তাহ|key" */
+    fun rightsDone(week: String): Set<String> =
+        (sp.getStringSet("rights_done", emptySet()) ?: emptySet()).filter { it.startsWith("$week|") }.map { it.substringAfter('|') }.toSet()
+
+    fun setRightsDone(week: String, keys: Set<String>) =
+        sp.edit().putStringSet("rights_done", keys.map { "$week|$it" }.toSet()).apply()
+
     // ---------- v0.12: ইলম ও দাওয়াহ ----------
     /** মুখস্থের অবস্থা: "key|ধাপ|শেষ রিভিশন" */
     var hifz: Map<String, com.istiqamah.app.core.HifzState>

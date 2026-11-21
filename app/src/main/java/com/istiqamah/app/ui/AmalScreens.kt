@@ -77,6 +77,14 @@ fun AmalScreen(vm: AppVm, open: (String) -> Unit, requestUnlock: (() -> Unit) ->
         Text("নামাজের পরের ধাপ — যিকির, নিজের হিসাব আর গুনাহ ছাড়ার লড়াই", fontSize = 14.sp, color = Muted)
         Spacer(Modifier.height(12.dp))
 
+        // v0.13: দ্বীনের মৌলিক শিক্ষা — সবার আগে
+        SectionCard(Modifier.clickable { open("deen") }) {
+            Text("দ্বীনের মৌলিক শিক্ষা", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+            Text("পথের তিন সঙ্গী (আলেম, সুহবত, মসজিদ) · তাহারাত · নামাজের মাসআলা · হালাল-হারাম · অন্তরের পরিশুদ্ধি · সমাজের হক · মৃত্যুর প্রস্তুতি · মহিলাদের মাসআলা · প্রশ্নের খাতা",
+                fontSize = 14.sp, color = Muted)
+        }
+        Spacer(Modifier.height(12.dp))
+
         // v0.12: ইলম ও দাওয়াহ
         SectionCard(Modifier.clickable { open("ilm") }) {
             Text("ইলম ও দাওয়াহ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)

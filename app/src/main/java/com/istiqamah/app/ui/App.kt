@@ -41,7 +41,7 @@ private val tabs = listOf(
 
 /**
  * পুরো অ্যাপের মূল: অনবোর্ডিং, নিচের ট্যাব, আর ওপরের পূর্ণ পর্দা।
- * পূর্ণ পর্দার রুট: "azkar:MORNING" · "muhasaba" · "sins" · "weekly" · "battery" · "home" · "keys" · "prime" · "jamaat" · "reader[:পৃষ্ঠা]" · "fasting" · "zakat" · "hajj" · "iman" · "lesson:KEY" · "akhirah" · "ihsan" · "akhlaq[:KEY]" · "family" · "ilm"
+ * পূর্ণ পর্দার রুট: "azkar:MORNING" · "muhasaba" · "sins" · "weekly" · "battery" · "home" · "keys" · "prime" · "jamaat" · "reader[:পৃষ্ঠা]" · "fasting" · "zakat" · "hajj" · "iman" · "lesson:KEY" · "akhirah" · "ihsan" · "akhlaq[:KEY]" · "family" · "ilm" · "deen" · "companions" · "questions" · "masail:KEY"
  */
 @Composable
 fun App(
@@ -108,6 +108,10 @@ fun App(
         r == "akhlaq" -> AkhlaqScreen(vm, open, back)
         r == "family" -> FamilyScreen(vm, open, back)
         r == "ilm" -> IlmScreen(vm, open, back)
+        r == "deen" -> DeenHubScreen(vm, open, back)
+        r == "companions" -> CompanionsScreen(vm, open, back)
+        r == "questions" -> QuestionsScreen(vm, back)
+        r != null && r.startsWith("masail:") -> MasailLessonScreen(vm, r.removePrefix("masail:"), open) { route = "deen" }
         r != null && r.startsWith("akhlaq:") -> AkhlaqAreaScreen(vm, r.removePrefix("akhlaq:"), open) { route = "akhlaq" }
         r != null && (r == "reader" || r.startsWith("reader:")) -> QuranReaderScreen(vm, r.removePrefix("reader").removePrefix(":").toIntOrNull(), back)
         else -> Scaffold(
