@@ -77,6 +77,14 @@ fun AmalScreen(vm: AppVm, open: (String) -> Unit, requestUnlock: (() -> Unit) ->
         Text("নামাজের পরের ধাপ — যিকির, নিজের হিসাব আর গুনাহ ছাড়ার লড়াই", fontSize = 14.sp, color = Muted)
         Spacer(Modifier.height(12.dp))
 
+        // v0.10: আখলাক ও হুকুকুল ইবাদ
+        SectionCard(Modifier.clickable { open("akhlaq") }) {
+            Text("আখলাক ও বান্দার হক", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+            Text("বাবা-মা, আত্মীয়, প্রতিবেশী, জবান, ঋণ ও আমানত, কাজে সততা — আজকের ভালো আচরণ, সাপ্তাহিক আত্মজিজ্ঞাসা, দেনা-পাওনার খাতা",
+                fontSize = 14.sp, color = Muted)
+        }
+        Spacer(Modifier.height(12.dp))
+
         // v0.9.5: ইহসান
         SectionCard(Modifier.clickable { open("ihsan") }) {
             Text("ইহসান — আল্লাহর সাথে", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)

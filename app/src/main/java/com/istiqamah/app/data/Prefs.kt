@@ -160,6 +160,7 @@ class Prefs(context: Context) {
             quran = quranOn, quranAt = quranAt,
             fasting = fastingOn, suhoorLeadMin = suhoorLead, nafl = naflFasts,
             zakatHijri = zakatHijri, sadaqahDay = sadaqahDay, dhulHijjah = dhulHijjahOn,
+            kinDay = kinDay, debtDue = debtDue,
         )
 
     // ---------- v0.3: সুন্নত দিনলিপি ----------
@@ -372,6 +373,65 @@ class Prefs(context: Context) {
     var quranBold: Boolean
         get() = sp.getBoolean("quran_bold", true)
         set(v) = sp.edit().putBoolean("quran_bold", v).apply()
+
+    // ---------- v0.10: আখলাক ও হুকুকুল ইবাদ ----------
+    /** সাপ্তাহিক আত্মীয়তার দিন; null = বন্ধ */
+    var kinDay: java.time.DayOfWeek?
+        get() = sp.getInt("kin_day", 0).takeIf { it in 1..7 }?.let { java.time.DayOfWeek.of(it) }
+        set(v) = sp.edit().putInt("kin_day", v?.value ?: 0).apply()
+
+    /** দেনা/পাওনা/আমানত — নাম, অঙ্ক, নোট এনক্রিপ্ট করে */
+    var debts: List<com.istiqamah.app.core.DebtEntry>
+        get() = runCatching {
+            val a = org.json.JSONArray(secret("debts").ifEmpty { "[]" })
+            (0 until a.length()).map { i ->
+                val o = a.getJSONObject(i)
+                com.istiqamah.app.core.DebtEntry(
+                    o.getLong("id"), com.istiqamah.app.core.DebtKind.fromCode(o.optInt("kind", 1)), o.optString("who"),
+                    o.optLong("amount"), o.optString("note"),
+                    o.optString("due").takeIf { it.isNotEmpty() }?.let { runCatching { LocalDate.parse(it) }.getOrNull() },
+                    o.optBoolean("done"),
+                )
+            }
+        }.getOrDefault(emptyList())
+        set(v) {
+            setSecret("debts", org.json.JSONArray().apply {
+                v.forEach { e ->
+                    put(org.json.JSONObject().apply {
+                        put("id", e.id); put("kind", e.kind.code); put("who", e.who); put("amount", e.amount)
+                        put("note", e.note); put("due", e.due?.toString() ?: ""); put("done", e.done)
+                    })
+                }
+            }.toString())
+            // রিমাইন্ডারের জন্য শুধু তারিখ আলাদা রাখি — নাম-অঙ্ক ছাড়া
+            sp.edit().putStringSet("debt_due", com.istiqamah.app.core.Akhlaq.dueDates(v).map { it.toString() }.toSet()).apply()
+        }
+
+    val debtDue: Set<LocalDate>
+        get() = (sp.getStringSet("debt_due", emptySet()) ?: emptySet()).mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }.toSet()
+
+    /** সাপ্তাহিক আত্মজিজ্ঞাসা: "সপ্তাহ|ক্ষেত্র|০-২" (শেষ ১২ সপ্তাহ) */
+    fun akhlaqWeek(week: String): Map<String, Int> =
+        (sp.getStringSet("akhlaq_check", emptySet()) ?: emptySet()).mapNotNull { e ->
+            val p = e.split('|')
+            if (p.size == 3 && p[0] == week) p[1] to (p[2].toIntOrNull() ?: return@mapNotNull null) else null
+        }.toMap()
+
+    fun setAkhlaqAnswer(week: String, area: String, score: Int) {
+        val all = (sp.getStringSet("akhlaq_check", emptySet()) ?: emptySet()).filterNot { it.startsWith("$week|$area|") }
+        val weeks = (all.map { it.substringBefore('|') } + week).distinct().sortedDescending().take(12).toSet()
+        sp.edit().putStringSet("akhlaq_check", (all.filter { it.substringBefore('|') in weeks } + "$week|$area|$score").toSet()).apply()
+    }
+
+    /** আজকের ভালো আচরণ করা হয়েছে এমন দিন (শেষ ৬০) */
+    var akhlaqDone: Set<LocalDate>
+        get() = (sp.getStringSet("akhlaq_done", emptySet()) ?: emptySet()).mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }.toSet()
+        set(v) = sp.edit().putStringSet("akhlaq_done", v.sortedDescending().take(60).map { it.toString() }.toSet()).apply()
+
+    /** আজ ট্যাবে "আজকের ভালো আচরণ" কার্ড */
+    var akhlaqToday: Boolean
+        get() = sp.getBoolean("akhlaq_today", true)
+        set(v) = sp.edit().putBoolean("akhlaq_today", v).apply()
 
     // ---------- v0.9.5: ইহসান ----------
     /** আজ ট্যাবে ১২ রাকাতের কার্ড — null হলে ধাপ অনুযায়ী (ঈমান ধাপ থেকে) */

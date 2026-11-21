@@ -410,7 +410,8 @@ object Notifier {
             NotifKind.DUHA, NotifKind.TAHAJJUD -> routine(ctx, kind, date, id)
             NotifKind.FAST_EVE, NotifKind.SUHOOR, NotifKind.SUHOOR_END, NotifKind.IFTAR, NotifKind.QADR_NIGHT, NotifKind.RAMADAN_EVE ->
                 fasting(ctx, kind, date, id)
-            NotifKind.ZAKAT_SOON, NotifKind.ZAKAT_DAY, NotifKind.SADAQAH_WEEKLY, NotifKind.DHUL_HIJJAH_EVE -> charity(ctx, kind, date, id)
+            NotifKind.ZAKAT_SOON, NotifKind.ZAKAT_DAY, NotifKind.SADAQAH_WEEKLY, NotifKind.DHUL_HIJJAH_EVE,
+            NotifKind.KIN_DAY, NotifKind.DEBT_DUE -> charity(ctx, kind, date, id)
             NotifKind.QURAN_DAILY, NotifKind.QURAN_LOSS -> {
                 val prefs = Prefs(ctx)
                 if (date in prefs.quranDoneDates) return
@@ -564,9 +565,9 @@ object Notifier {
         val items = ContentRepo.forUser(ctx)
         val seen = store.seenMap()
         fun pick(vararg tags: String) = ContentPicker.pickMajorFirst(items, tags.toList(), seen, today, kind.ordinal)?.also { store.markSeen(it.id, today) }
-        fun show(title: String, item: ContentItem?, vararg lines: String, channel: String = CH_AYAH) {
+        fun show(title: String, item: ContentItem?, vararg lines: String, channel: String = CH_AYAH, route: String = "zakat") {
             val body = listOfNotNull(item?.let { "${it.shortBn}\n— ${it.refBn}" }, *lines).joinToString("\n\n")
-            post(ctx, id, channel, title, item?.shortBn ?: lines.firstOrNull() ?: "", body, item, null, date, route = "zakat")
+            post(ctx, id, channel, title, item?.shortBn ?: lines.firstOrNull() ?: "", body, item, null, date, route = route)
         }
         when (kind) {
             NotifKind.ZAKAT_SOON -> show("এক সপ্তাহ পরে যাকাতের দিন", pick("gain_zakat"),
@@ -578,6 +579,11 @@ object Notifier {
             NotifKind.DHUL_HIJJAH_EVE -> show("কাল থেকে জিলহজের প্রথম দশ দিন", pick("dhul_hijjah"),
                 "যিকির (তাকবির-তাহলিল-তাহমিদ), নফল রোজা, বিশেষ করে ৯ তারিখ আরাফার রোজা।",
                 "কুরবানির নিয়ত থাকলে চাঁদ ওঠা থেকে কুরবানি পর্যন্ত চুল-নখ কাটবেন না (মুসলিম ১৯৭৭)।")
+            // v0.10 — নাম, অঙ্ক বা কার দেনা তা কখনো নোটিফিকেশনে নয়
+            NotifKind.KIN_DAY -> show("আজ আত্মীয়তার দিন", pick("kin", "parents"),
+                "বাবা-মা বা কোনো আত্মীয়কে একটা ফোন — অনেকদিন কথা হয়নি এমন কাউকে আগে।", channel = CH_SUNNAH, route = "akhlaq:kin")
+            NotifKind.DEBT_DUE -> show("ফেরত দেওয়ার তারিখ কাছে", pick("debt"),
+                "আপনার তালিকার একটা দেনা বা আমানত ফেরতের তারিখ কাছে — অ্যাপে দেখে নিন। পুরোটা না পারলে অল্প হলেও দিন, আর জানিয়ে রাখুন।", route = "akhlaq:debt")
             else -> return
         }
     }

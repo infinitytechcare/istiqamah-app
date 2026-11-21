@@ -237,7 +237,7 @@ private fun LTitle(t: String) {
 
 /** কুরআনের আয়াত — আরবি, বাংলা অর্থ, কুরআনে খোলার বোতাম */
 @Composable
-private fun AyahBlock(data: QuranData?, r: AyahRef, open: (String) -> Unit, indoPak: Boolean, bg: Color = Color.White) {
+internal fun AyahBlock(data: QuranData?, r: AyahRef, open: (String) -> Unit, indoPak: Boolean, bg: Color = Color.White) {
     Column(Modifier.fillMaxWidth().background(bg, RoundedCornerShape(16.dp)).padding(14.dp)) {
         if (data == null) {
             Text("সূরা ${r.bn} — লোড হচ্ছে…", fontSize = 14.sp, color = Muted)
@@ -260,7 +260,7 @@ private fun AyahBlock(data: QuranData?, r: AyahRef, open: (String) -> Unit, indo
 }
 
 @Composable
-private fun HadithBlock(id: String, bg: Color = Color.White) {
+internal fun HadithBlock(id: String, bg: Color = Color.White) {
     val ctx = LocalContext.current
     val h = remember(id) { ContentRepo.byId(ctx, id) } ?: return
     Column(Modifier.fillMaxWidth().background(bg, RoundedCornerShape(16.dp)).padding(14.dp)) {

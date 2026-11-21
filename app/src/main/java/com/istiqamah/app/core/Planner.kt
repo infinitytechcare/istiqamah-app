@@ -105,7 +105,13 @@ enum class NotifKind(val isPrayer: Boolean, val priority: Int) {
     /** সাপ্তাহিক গোপন সদকা */
     SADAQAH_WEEKLY(false, 2),
     /** কাল থেকে জিলহজের প্রথম দশ দিন (কুরবানিদাতার চুল-নখ না কাটা) */
-    DHUL_HIJJAH_EVE(false, 1);
+    DHUL_HIJJAH_EVE(false, 1),
+
+    // ---- v0.10: আখলাক ও হুকুকুল ইবাদ ----
+    /** সাপ্তাহিক আত্মীয়তার দিন — বাবা-মা/আত্মীয়ের খোঁজ */
+    KIN_DAY(false, 2),
+    /** দেনা/আমানত ফেরতের তারিখ কাছে (৩ দিন আগে ও সেদিন) — নাম-অঙ্ক ছাড়া */
+    DEBT_DUE(false, 1);
 
     val isHomeNudge: Boolean get() = this == HOME_NUDGE_1 || this == HOME_NUDGE_2 || this == HOME_NUDGE_3
 
@@ -163,6 +169,10 @@ data class ExtraReminders(
     val sadaqahDay: DayOfWeek? = null,
     /** জিলহজের প্রথম দশকের রিমাইন্ডার */
     val dhulHijjah: Boolean = false,
+    /** v0.10: সাপ্তাহিক আত্মীয়তার দিন; null = বন্ধ */
+    val kinDay: DayOfWeek? = null,
+    /** খোলা দেনা/আমানত ফেরতের তারিখগুলো (শুধু তারিখ) */
+    val debtDue: Set<LocalDate> = emptySet(),
 )
 
 data class PlannerInput(
@@ -272,6 +282,7 @@ object Planner {
             out += quranFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += fastingFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += charityFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
+            out += akhlaqFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += extrasFor(date, windows, input).filter { it.fireAt.isAfter(input.now) }
             out += routineFor(date, windows, input.extras).filter { it.fireAt.isAfter(input.now) }
             reportFor(date, windows, input.extras)?.takeIf { it.fireAt.isAfter(input.now) }?.let { out += it }
@@ -460,6 +471,18 @@ object Planner {
         if (ex.dhulHijjah) {
             val t = input.hijri[date.plusDays(1)]
             if (t != null && t.month == 12 && t.day == 1) add(NotifKind.DHUL_HIJJAH_EVE, w.getValue(Prayer.MAGHRIB).start.plusMinutes(20))
+        }
+        return out
+    }
+
+    /** v0.10: আত্মীয়তার দিন (মাগরিবের ৪০ মিনিট পরে — সবাই ঘরে) আর দেনা ফেরতের তারিখ (সকালে) */
+    fun akhlaqFor(date: LocalDate, windows: List<PrayerWindow>, input: PlannerInput): List<PlannedNotif> {
+        val ex = input.extras
+        val w = windows.associateBy { it.prayer }
+        val out = ArrayList<PlannedNotif>()
+        if (ex.kinDay != null && date.dayOfWeek == ex.kinDay) out += PlannedNotif(date, null, NotifKind.KIN_DAY, w.getValue(Prayer.MAGHRIB).start.plusMinutes(40))
+        if (date in ex.debtDue || date.plusDays(Akhlaq.DEBT_REMIND_BEFORE) in ex.debtDue) {
+            out += PlannedNotif(date, null, NotifKind.DEBT_DUE, w.getValue(Prayer.FAJR).end.plusHours(3).plusMinutes(10))
         }
         return out
     }

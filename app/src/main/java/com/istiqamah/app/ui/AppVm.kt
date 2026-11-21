@@ -69,6 +69,9 @@ data class TodayState(
     val khushuPending: Prayer? = null,
     /** ইহসান ধাপে পৌঁছেছেন কিন্তু তাহাজ্জুদের রিমাইন্ডার বন্ধ */
     val suggestTahajjud: Boolean = false,
+    /** v0.10: আজকের ভালো আচরণ (ক্ষেত্র, কাজ) */
+    val akhlaqAction: Pair<com.istiqamah.app.core.HaqqArea, String>? = null,
+    val akhlaqDoneToday: Boolean = false,
 ) {
     val isFriday: Boolean get() = today.dayOfWeek == DayOfWeek.FRIDAY
     fun prayerName(p: Prayer) = if (isFriday && p == Prayer.DHUHR) "জুমা / যোহর" else p.bn
@@ -166,6 +169,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 naflFasts = nafl.takeIf { prefs.fastingOn || it > 0 },
                 sadaqahWeeks = weeks.takeIf { prefs.sadaqahDay != null || log.isNotEmpty() },
                 imanLessons = prefs.imanDone.count { com.istiqamah.app.core.Iman.byKey(it) != null },
+                akhlaqPercent = com.istiqamah.app.core.Akhlaq.average((0 until 4).map { w -> prefs.akhlaqWeek(com.istiqamah.app.core.Ihsan.weekKey(today.minusWeeks(w.toLong()))) }),
                 sunnahPercent = store.sunnah(from, today).takeIf { it.isNotEmpty() }?.let { com.istiqamah.app.core.Ihsan.percent(it, today, days.toInt()) },
             ),
         )
@@ -210,6 +214,8 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             khushuPending = if (prefs.khushuAsk) com.istiqamah.app.core.Ihsan.pendingKhushu(
                 logs[today] ?: DayLog(today, emptyMap()), store.khushu(today, today)[today]?.keys.orEmpty(),
             ) else null,
+            akhlaqAction = if (prefs.akhlaqToday) com.istiqamah.app.core.Akhlaq.actionFor(today) else null,
+            akhlaqDoneToday = today in prefs.akhlaqDone,
             suggestTahajjud = stage.stage == com.istiqamah.app.core.Stage.IHSAN && !prefs.tahajjudTipOff &&
                 com.istiqamah.app.core.NotifKind.TAHAJJUD !in prefs.routine,
         )
@@ -238,6 +244,14 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { LogStore.get(ctx).setSunnah(t.today, slot, done) }
             refresh()
         }
+    }
+
+    /** আজকের ভালো আচরণ করা হলো / বাতিল */
+    fun toggleAkhlaqToday() {
+        val t = todayState ?: return
+        val done = !t.akhlaqDoneToday
+        prefs.akhlaqDone = if (done) prefs.akhlaqDone + t.today else prefs.akhlaqDone - t.today
+        todayState = t.copy(akhlaqDoneToday = done)
     }
 
     /** নামাজের পর খুশুর মাপ */
