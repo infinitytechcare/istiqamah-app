@@ -72,6 +72,11 @@ data class TodayState(
     /** v0.10: আজকের ভালো আচরণ (ক্ষেত্র, কাজ) */
     val akhlaqAction: Pair<com.istiqamah.app.core.HaqqArea, String>? = null,
     val akhlaqDoneToday: Boolean = false,
+    /** v0.11: আজ স্বামী/স্ত্রীর জন্য একটি ছোট কাজ (বিবাহিত হলে) */
+    val spouseAct: String? = null,
+    /** ৭+ বছরের সন্তান আর আজ তাদের কয় ওয়াক্ত */
+    val kidsSalah: List<Pair<com.istiqamah.app.core.Child, Int?>> = emptyList(),
+    val showFamily: Boolean = false,
 ) {
     val isFriday: Boolean get() = today.dayOfWeek == DayOfWeek.FRIDAY
     fun prayerName(p: Prayer) = if (isFriday && p == Prayer.DHUHR) "জুমা / যোহর" else p.bn
@@ -169,6 +174,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
                 naflFasts = nafl.takeIf { prefs.fastingOn || it > 0 },
                 sadaqahWeeks = weeks.takeIf { prefs.sadaqahDay != null || log.isNotEmpty() },
                 imanLessons = prefs.imanDone.count { com.istiqamah.app.core.Iman.byKey(it) != null },
+                familyPercent = prefs.halaqaDay?.let { com.istiqamah.app.core.Family.halaqaPercent(prefs.halaqaDone, today) },
                 akhlaqPercent = com.istiqamah.app.core.Akhlaq.average((0 until 4).map { w -> prefs.akhlaqWeek(com.istiqamah.app.core.Ihsan.weekKey(today.minusWeeks(w.toLong()))) }),
                 sunnahPercent = store.sunnah(from, today).takeIf { it.isNotEmpty() }?.let { com.istiqamah.app.core.Ihsan.percent(it, today, days.toInt()) },
             ),
@@ -216,6 +222,9 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             ) else null,
             akhlaqAction = if (prefs.akhlaqToday) com.istiqamah.app.core.Akhlaq.actionFor(today) else null,
             akhlaqDoneToday = today in prefs.akhlaqDone,
+            spouseAct = if (prefs.marital == com.istiqamah.app.core.Marital.MARRIED) com.istiqamah.app.core.Family.spouseActFor(prefs.gender, today) else null,
+            kidsSalah = prefs.children.filter { com.istiqamah.app.core.Family.prays(it, today) }.map { it to prefs.childSalah(it.id)[today] },
+            showFamily = prefs.familyToday && (prefs.marital == com.istiqamah.app.core.Marital.MARRIED || prefs.children.any { com.istiqamah.app.core.Family.prays(it, today) }),
             suggestTahajjud = stage.stage == com.istiqamah.app.core.Stage.IHSAN && !prefs.tahajjudTipOff &&
                 com.istiqamah.app.core.NotifKind.TAHAJJUD !in prefs.routine,
         )
@@ -244,6 +253,13 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { LogStore.get(ctx).setSunnah(t.today, slot, done) }
             refresh()
         }
+    }
+
+    /** বাচ্চার আজকের নামাজের সংখ্যা */
+    fun setKidSalah(child: com.istiqamah.app.core.Child, count: Int) {
+        val t = todayState ?: return
+        prefs.setChildSalah(child.id, t.today, count)
+        todayState = t.copy(kidsSalah = t.kidsSalah.map { if (it.first.id == child.id) it.first to count else it })
     }
 
     /** আজকের ভালো আচরণ করা হলো / বাতিল */

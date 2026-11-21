@@ -19,6 +19,7 @@ enum class AmalArea(val bn: String, val route: String?, val nextStep: String) {
     SADAQAH("সদকা", "zakat", "এ সপ্তাহে গোপনে কিছু সদকা করুন — অল্প হলেও"),
     IMAN("ঈমানের পাঠ", "iman", "ঈমানের পরের পাঠটা পড়ে কুইজ দিন"),
     AKHLAQ("আখলাক ও বান্দার হক", "akhlaq", "এ সপ্তাহের আত্মজিজ্ঞাসা করুন, আর আজকের একটি ভালো আচরণ"),
+    FAMILY("পারিবারিক হালাকা", "family", "এ সপ্তাহে পরিবার নিয়ে ১৫ মিনিটের হালাকা করুন"),
 }
 
 data class AreaScore(val area: AmalArea, val percent: Int, val detail: String)
@@ -41,6 +42,8 @@ data class WholenessInput(
     val sunnahPercent: Int? = null,
     /** গত ৪ সপ্তাহের আত্মজিজ্ঞাসার গড় — উত্তর না দিলে null */
     val akhlaqPercent: Int? = null,
+    /** গত ৪ সপ্তাহে হালাকার শতাংশ — হালাকার দিন ঠিক না করলে null */
+    val familyPercent: Int? = null,
 )
 
 data class WholenessResult(val areas: List<AreaScore>, val overall: Int, val weakest: AreaScore?)
@@ -64,6 +67,7 @@ object Wholeness {
             add(AreaScore(AmalArea.MUHASABA, pct(i.muhasabaDays, d), "${Bn.num(i.muhasabaDays)}/${Bn.num(d)} দিন"))
             i.naflFasts?.let { add(AreaScore(AmalArea.FASTING, pct(it, FAST_TARGET), "${Bn.num(it)}টি রোজা")) }
             i.sadaqahWeeks?.let { add(AreaScore(AmalArea.SADAQAH, pct(it, SADAQAH_WEEKS), "${Bn.num(it)}/${Bn.num(SADAQAH_WEEKS)} সপ্তাহ")) }
+            i.familyPercent?.let { add(AreaScore(AmalArea.FAMILY, it.coerceIn(0, 100), "${Bn.num(it.coerceIn(0, 100) / 25)}/৪ সপ্তাহ")) }
             i.akhlaqPercent?.let { add(AreaScore(AmalArea.AKHLAQ, it.coerceIn(0, 100), "আত্মজিজ্ঞাসা ${Bn.num(it.coerceIn(0, 100))}%")) }
             add(AreaScore(AmalArea.IMAN, pct(i.imanLessons, Iman.LESSONS.size), "${Bn.num(i.imanLessons)}/${Bn.num(Iman.LESSONS.size)} পাঠ"))
         }

@@ -160,7 +160,7 @@ class Prefs(context: Context) {
             quran = quranOn, quranAt = quranAt,
             fasting = fastingOn, suhoorLeadMin = suhoorLead, nafl = naflFasts,
             zakatHijri = zakatHijri, sadaqahDay = sadaqahDay, dhulHijjah = dhulHijjahOn,
-            kinDay = kinDay, debtDue = debtDue,
+            kinDay = kinDay, debtDue = debtDue, halaqaDay = halaqaDay,
         )
 
     // ---------- v0.3: সুন্নত দিনলিপি ----------
@@ -373,6 +373,61 @@ class Prefs(context: Context) {
     var quranBold: Boolean
         get() = sp.getBoolean("quran_bold", true)
         set(v) = sp.edit().putBoolean("quran_bold", v).apply()
+
+    // ---------- v0.11: পরিবার ----------
+    var marital: com.istiqamah.app.core.Marital
+        get() = com.istiqamah.app.core.Marital.fromCode(sp.getInt("marital", 0))
+        set(v) = sp.edit().putInt("marital", v.code).apply()
+
+    /** সন্তানদের নাম ও জন্মমাস — এনক্রিপ্ট করে */
+    var children: List<com.istiqamah.app.core.Child>
+        get() = runCatching {
+            val a = org.json.JSONArray(secret("children").ifEmpty { "[]" })
+            (0 until a.length()).map { i ->
+                val o = a.getJSONObject(i)
+                com.istiqamah.app.core.Child(o.getLong("id"), o.optString("name"), java.time.YearMonth.parse(o.getString("born")))
+            }
+        }.getOrDefault(emptyList())
+        set(v) = setSecret("children", org.json.JSONArray().apply {
+            v.forEach { c -> put(org.json.JSONObject().apply { put("id", c.id); put("name", c.name); put("born", c.born.toString()) }) }
+        }.toString())
+
+    /** বাচ্চার দিনের নামাজ: "তারিখ|id|০-৫" (শেষ ৬০ দিন) */
+    fun childSalah(childId: Long): Map<LocalDate, Int> =
+        (sp.getStringSet("child_salah", emptySet()) ?: emptySet()).mapNotNull { e ->
+            val p = e.split('|')
+            if (p.size == 3 && p[1] == childId.toString()) {
+                val d = runCatching { LocalDate.parse(p[0]) }.getOrNull() ?: return@mapNotNull null
+                d to (p[2].toIntOrNull() ?: return@mapNotNull null)
+            } else null
+        }.toMap()
+
+    fun setChildSalah(childId: Long, date: LocalDate, count: Int) {
+        val keep = date.minusDays(60)
+        val all = (sp.getStringSet("child_salah", emptySet()) ?: emptySet()).filterNot { it.startsWith("$date|$childId|") }
+            .filter { e -> runCatching { !LocalDate.parse(e.substringBefore('|')).isBefore(keep) }.getOrDefault(false) }
+        sp.edit().putStringSet("child_salah", (all + "$date|$childId|${count.coerceIn(0, 5)}").toSet()).apply()
+    }
+
+    /** সন্তানের ধাপের কাজগুলোর কোনটা হয়েছে: "id|ধাপের শুরু-বয়স|সূচি" */
+    var childDone: Set<String>
+        get() = sp.getStringSet("child_done", emptySet()) ?: emptySet()
+        set(v) = sp.edit().putStringSet("child_done", v).apply()
+
+    /** সাপ্তাহিক পারিবারিক হালাকার দিন; null = বন্ধ */
+    var halaqaDay: java.time.DayOfWeek?
+        get() = sp.getInt("halaqa_day", 0).takeIf { it in 1..7 }?.let { java.time.DayOfWeek.of(it) }
+        set(v) = sp.edit().putInt("halaqa_day", v?.value ?: 0).apply()
+
+    /** যে সপ্তাহগুলোতে হালাকা হয়েছে (Ihsan.weekKey) */
+    var halaqaDone: Set<String>
+        get() = sp.getStringSet("halaqa_done", emptySet()) ?: emptySet()
+        set(v) = sp.edit().putStringSet("halaqa_done", v.sortedDescending().take(26).toSet()).apply()
+
+    /** আজ ট্যাবে "পরিবার আজ" কার্ড */
+    var familyToday: Boolean
+        get() = sp.getBoolean("family_today", true)
+        set(v) = sp.edit().putBoolean("family_today", v).apply()
 
     // ---------- v0.10: আখলাক ও হুকুকুল ইবাদ ----------
     /** সাপ্তাহিক আত্মীয়তার দিন; null = বন্ধ */

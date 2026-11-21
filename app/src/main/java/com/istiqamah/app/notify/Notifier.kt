@@ -411,7 +411,7 @@ object Notifier {
             NotifKind.FAST_EVE, NotifKind.SUHOOR, NotifKind.SUHOOR_END, NotifKind.IFTAR, NotifKind.QADR_NIGHT, NotifKind.RAMADAN_EVE ->
                 fasting(ctx, kind, date, id)
             NotifKind.ZAKAT_SOON, NotifKind.ZAKAT_DAY, NotifKind.SADAQAH_WEEKLY, NotifKind.DHUL_HIJJAH_EVE,
-            NotifKind.KIN_DAY, NotifKind.DEBT_DUE -> charity(ctx, kind, date, id)
+            NotifKind.KIN_DAY, NotifKind.DEBT_DUE, NotifKind.FAMILY_HALAQA -> charity(ctx, kind, date, id)
             NotifKind.QURAN_DAILY, NotifKind.QURAN_LOSS -> {
                 val prefs = Prefs(ctx)
                 if (date in prefs.quranDoneDates) return
@@ -582,6 +582,8 @@ object Notifier {
             // v0.10 — নাম, অঙ্ক বা কার দেনা তা কখনো নোটিফিকেশনে নয়
             NotifKind.KIN_DAY -> show("আজ আত্মীয়তার দিন", pick("kin", "parents"),
                 "বাবা-মা বা কোনো আত্মীয়কে একটা ফোন — অনেকদিন কথা হয়নি এমন কাউকে আগে।", channel = CH_SUNNAH, route = "akhlaq:kin")
+            NotifKind.FAMILY_HALAQA -> show("আজ পারিবারিক হালাকা", pick("family"),
+                "সবাইকে নিয়ে ১৫ মিনিট: একটা আয়াত, একটা হাদিস, একটা প্রশ্ন, একটা দোয়া — অ্যাপে এ সপ্তাহের বিষয় তৈরি আছে।", channel = CH_SUNNAH, route = "family")
             NotifKind.DEBT_DUE -> show("ফেরত দেওয়ার তারিখ কাছে", pick("debt"),
                 "আপনার তালিকার একটা দেনা বা আমানত ফেরতের তারিখ কাছে — অ্যাপে দেখে নিন। পুরোটা না পারলে অল্প হলেও দিন, আর জানিয়ে রাখুন।", route = "akhlaq:debt")
             else -> return
