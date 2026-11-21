@@ -129,3 +129,51 @@ object QuranProgress {
     /** পড়ার পরে নতুন বুকমার্ক আর খতম হলো কি না */
     fun advance(to: Int): Pair<Int, Boolean> = if (to > QuranIndex.TOTAL) 1 to true else to.coerceAtLeast(1) to false
 }
+
+/**
+ * কুরআনের পাঠ (quran-json, KFGQPC হাফস এনকোডিং) "খোলা তানবিন" লেখে U+0657/U+065E/U+0656 দিয়ে।
+ * আমিরি ফন্টে এই কোডগুলো উল্টা পেশ/খাড়া যবর হিসেবে আঁকা হয় — ভুল দেখায়। ইউনিকোডের আসল কোড
+ * U+08F0 (খোলা দুই যবর), U+08F1 (খোলা দুই পেশ), U+08F2 (খোলা দুই যের)-এ বদলে দিলে ঠিক দেখায়।
+ * শুধু কুরআনের আরবিতে লাগাবেন।
+ */
+object QuranScript {
+    fun forFont(s: String): String {
+        if (s.none { it == '\u0657' || it == '\u065E' || it == '\u0656' }) return s
+        val b = StringBuilder(s.length)
+        for (c in s) b.append(
+            when (c) {
+                '\u0657' -> '\u08F0'
+                '\u065E' -> '\u08F1'
+                '\u0656' -> '\u08F2'
+                else -> c
+            },
+        )
+        return b.toString()
+    }
+
+    /** ০–৯ → ٠–٩ */
+    fun digits(n: Int): String = n.toString().map { '\u0660' + (it - '0') }.joinToString("")
+}
+
+/** মুসহাফ-ধরনের পাতায় শব্দগুলো লাইনে সাজানো (লোভী পদ্ধতি — একই প্রস্থে সবসময় একই ভাঙন) */
+object MushafLayout {
+    /**
+     * [widths] প্রতিটি শব্দের প্রস্থ, [max] লাইনের প্রস্থ, [gap] দুই শব্দের মাঝে ন্যূনতম ফাঁক।
+     * ফল: প্রতিটি লাইনে কোন শব্দগুলো (সূচির পরিসর)। খুব চওড়া শব্দ একাই এক লাইনে।
+     */
+    fun breakLines(widths: List<Float>, max: Float, gap: Float): List<IntRange> {
+        val out = ArrayList<IntRange>()
+        var start = 0
+        var used = 0f
+        for (i in widths.indices) {
+            val need = if (i == start) widths[i] else used + gap + widths[i]
+            if (i > start && need > max) {
+                out += start until i
+                start = i
+                used = widths[i]
+            } else used = need
+        }
+        if (start < widths.size) out += start until widths.size
+        return out
+    }
+}

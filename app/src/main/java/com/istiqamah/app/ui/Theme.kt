@@ -32,6 +32,9 @@ val Amiri = FontFamily(
     Font(R.font.amiri_bold, FontWeight.Bold),
 )
 
+/** কুরআন পাঠকের জন্য — উসমানি লিপির সব চিহ্ন ঠিকমতো বসে (SIL OFL) */
+val AmiriQuran = FontFamily(Font(R.font.amiri_quran, FontWeight.Normal))
+
 private val base = Typography()
 
 private val AppTypography = Typography(

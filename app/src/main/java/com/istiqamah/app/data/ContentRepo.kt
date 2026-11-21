@@ -43,7 +43,7 @@ object ContentRepo {
             surah = ref?.optIntOrNull("surah"),
             ayahFrom = ref?.optIntOrNull("ayah_from"),
             ayahTo = ref?.optIntOrNull("ayah_to"),
-            arabic = o.optString("arabic", ""),
+            arabic = com.istiqamah.app.core.QuranScript.forFont(o.optString("arabic", "")),
             bn = o.getString("bn"),
             bnSource = o.getString("bn_source"),
             shortBn = o.getString("short_bn"),

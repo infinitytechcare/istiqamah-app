@@ -29,7 +29,7 @@ object AzkarRepo {
                 set = set,
                 order = o.optInt("order", i),
                 titleBn = o.getString("title"),
-                arabic = o.getString("arabic"),
+                arabic = com.istiqamah.app.core.QuranScript.forFont(o.getString("arabic")),
                 pronunciationBn = o.optString("pron", ""),
                 meaningBn = o.optString("meaning", ""),
                 count = o.optInt("count", 1).coerceAtLeast(1),

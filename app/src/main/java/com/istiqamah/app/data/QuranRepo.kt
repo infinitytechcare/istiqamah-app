@@ -60,7 +60,7 @@ object QuranRepo {
         val bnA = o.getJSONArray("bn")
         return QuranData(
             index, surahs,
-            Array(arA.length()) { arA.getString(it) },
+            Array(arA.length()) { com.istiqamah.app.core.QuranScript.forFont(arA.getString(it)) },
             Array(bnA.length()) { bnA.getString(it) },
             o.getJSONArray("bn_issues").ints().toSet(),
             o.getString("attribution"),

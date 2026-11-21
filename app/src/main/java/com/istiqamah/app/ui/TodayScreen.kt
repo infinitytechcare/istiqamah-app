@@ -133,6 +133,8 @@ fun TodayScreen(vm: AppVm, onOpenContent: (String) -> Unit, open: (String) -> Un
             }
         }
 
+        t.wholeness?.let { w -> item { WholenessCard(w, open) } }
+
         // এখন কোন আযকারের সময় / ইশার পর মুহাসাবা
         val suggest = Azkar.suggested(vm.now, t.windows)
         if (suggest != null && suggest !in t.azkarDone && suggest != AzkarSet.SLEEP) {

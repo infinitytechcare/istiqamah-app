@@ -77,6 +77,15 @@ fun AmalScreen(vm: AppVm, open: (String) -> Unit, requestUnlock: (() -> Unit) ->
         Text("নামাজের পরের ধাপ — যিকির, নিজের হিসাব আর গুনাহ ছাড়ার লড়াই", fontSize = 14.sp, color = Muted)
         Spacer(Modifier.height(12.dp))
 
+        // v0.9: ঈমানের ৬ রুকন ও আখিরাত কার্ড
+        SectionCard(Modifier.clickable { open("iman") }) {
+            val done = vm.prefs.imanDone.count { com.istiqamah.app.core.Iman.byKey(it) != null }
+            Text("ঈমান ও আখিরাত", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+            Text("ঈমানের ৬ রুকনের পাঠ ও কুইজ (${com.istiqamah.app.core.Bn.num(done)}/৬) · আখিরাত কার্ড — ভয়ের সাথে আশা",
+                fontSize = 14.sp, color = Muted)
+        }
+        Spacer(Modifier.height(12.dp))
+
         // v0.4: ঘরে-একা নামাজ ও নামাজ সহজ করার চাবি
         SectionCard(Modifier.clickable { open("home") }) {
             Text("ঘরে-একা নামাজ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)

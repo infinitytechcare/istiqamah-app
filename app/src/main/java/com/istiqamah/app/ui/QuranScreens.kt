@@ -75,14 +75,14 @@ import java.time.LocalTime
 
 /** পুরো কুরআন একবার IO-তে লোড; লোড হওয়া পর্যন্ত null */
 @Composable
-private fun rememberQuran(): QuranData? {
+internal fun rememberQuran(): QuranData? {
     val ctx = LocalContext.current
     val s by produceState(QuranRepo.loaded(), Unit) { if (value == null) value = withContext(Dispatchers.IO) { QuranRepo.get(ctx) } }
     return s
 }
 
 @Composable
-private fun Loading() {
+internal fun Loading() {
     Box(Modifier.fillMaxSize().background(Cream), contentAlignment = Alignment.Center) {
         CircularProgressIndicator(color = Emerald700)
     }
@@ -231,145 +231,6 @@ fun QuranHomeScreen(vm: AppVm, open: (String) -> Unit) {
     }
 }
 
-// =====================================================================
-// পাঠক — পৃষ্ঠা ধরে আরবি + বাংলা, তিলাওয়াত, মুখস্থের রিপিট
-// =====================================================================
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-fun QuranReaderScreen(vm: AppVm, startPage: Int?, onBack: () -> Unit) {
-    val ctx = LocalContext.current
-    val data = rememberQuran() ?: return Loading()
-    val p = vm.prefs
-    @Suppress("UNUSED_VARIABLE") val v = vm.settingsVersion // বুকমার্ক বদলালে আবার আঁকা
-    var page by remember { mutableIntStateOf(startPage ?: data.index.pageOf(p.quranBookmark)) }
-    var showBn by remember { mutableStateOf(p.quranShowBn) }
-    var repeat by remember { mutableIntStateOf(p.quranRepeat) }
-    var menuFor by remember { mutableStateOf<Int?>(null) }
-    val playing by QuranAudio.playing.collectAsState()
-    val error by QuranAudio.error.collectAsState()
-    val scope = rememberCoroutineScope()
-    val listState = rememberLazyListState()
-    val range = data.index.pageRange(page)
-    val ids = range.toList()
-
-    BackHandler { QuranAudio.stop(); onBack() }
-    DisposableEffect(Unit) { onDispose { QuranAudio.stop() } }
-    LaunchedEffect(page) { listState.scrollToItem(0) }
-    LaunchedEffect(error) { error?.let { Toast.makeText(ctx, it, Toast.LENGTH_LONG).show(); QuranAudio.clearError() } }
-    // বাজতে থাকা আয়াত চোখের সামনে রাখি; পৃষ্ঠা শেষ হলে পরের পৃষ্ঠায় যায় না (নিজে এগোবেন)
-    LaunchedEffect(playing) { playing?.let { id -> ids.indexOf(id).takeIf { it >= 0 }?.let { listState.animateScrollToItem(it) } } }
-
-    fun play(from: Int, only: Boolean = false) {
-        val list = if (only) listOf(from) else ids.filter { it >= from }
-        QuranAudio.play(ctx, data.index, list, repeat, Reciter.fromCode(p.reciter))
-    }
-
-    Column(Modifier.fillMaxSize().background(Cream).statusBarsPadding().navigationBarsPadding()) {
-        // ওপরের বার
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(onClick = { QuranAudio.stop(); onBack() }) { Text("‹ ফিরে", color = Emerald800) }
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(data.surah(range.first).nameBn, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Emerald800)
-                Text("পৃষ্ঠা ${Bn.num(page)} · পারা ${Bn.num(data.index.juzOf(range.first))}", fontSize = 12.sp, color = Muted)
-            }
-            TextButton(onClick = { showBn = !showBn; p.quranShowBn = showBn }) { Text(if (showBn) "অর্থ লুকান" else "অর্থ দেখান", color = Emerald700, fontSize = 13.sp) }
-        }
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 14.dp), state = listState) {
-            items(ids, key = { it }) { id ->
-                val s = data.surah(id)
-                val ayah = data.index.ayahNo(id)
-                if (ayah == 1) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(vertical = 10.dp).background(Emerald50, RoundedCornerShape(12.dp)).padding(12.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Text(s.nameAr, fontSize = 24.sp, color = Emerald800)
-                        Text("সূরা ${s.nameBn} (${s.meaning}) · ${Bn.num(s.count)} আয়াত", fontSize = 13.sp, color = Muted)
-                        if (s.no != 1 && s.no != 9) Text(data.ar(1), fontSize = 22.sp, color = Ink, modifier = Modifier.padding(top = 6.dp))
-                    }
-                }
-                val active = playing == id
-                Column(
-                    Modifier.fillMaxWidth()
-                        .background(if (active) Emerald50 else Cream, RoundedCornerShape(10.dp))
-                        .combinedClickable(onClick = { menuFor = id }, onLongClick = { menuFor = id })
-                        .padding(vertical = 10.dp, horizontal = 4.dp),
-                ) {
-                    Text(
-                        "${data.ar(id)} ﴿${arabicNum(ayah)}﴾",
-                        fontSize = 25.sp, lineHeight = 46.sp, color = Ink, modifier = Modifier.fillMaxWidth(),
-                        style = TextStyle(textDirection = TextDirection.Rtl, textAlign = TextAlign.Start),
-                    )
-                    if (id in data.index.sajda) Text("۩ সিজদার আয়াত", fontSize = 12.sp, color = Gold)
-                    if (showBn) {
-                        Text("${Bn.num(s.no)}:${Bn.num(ayah)} — ${data.bn(id)}", fontSize = 15.sp, lineHeight = 23.sp, color = Muted, modifier = Modifier.padding(top = 6.dp))
-                        if (data.hasBnIssue(id)) Text("এই আয়াতের ডিজিটাল অনুবাদে অংশ বাদ পড়েছে — মুদ্রিত তাফসির দেখুন।", fontSize = 11.sp, color = StatusQaza)
-                    }
-                    if (id == p.quranBookmark) Text("🔖 এখান থেকে পড়ার কথা", fontSize = 12.sp, color = Gold)
-                }
-                HorizontalDivider(color = Emerald50)
-            }
-            item {
-                val bmPage = data.index.pageOf(p.quranBookmark)
-                Button(
-                    onClick = {
-                        val to = range.last + 1
-                        scope.launch {
-                            val khatm = withContext(Dispatchers.IO) { Engine.logQuranRead(ctx, data, range.first, to, moveBookmark = page == bmPage) }
-                            Toast.makeText(ctx, if (khatm) "আলহামদুলিল্লাহ! খতম সম্পূর্ণ 🌙" else "পৃষ্ঠা ${Bn.num(page)} পড়া হলো ✓", Toast.LENGTH_SHORT).show()
-                            vm.settingsChanged()
-                            if (page < data.index.pageCount) page++
-                        }
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp).height(52.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Emerald700),
-                ) { Text("এই পৃষ্ঠা পড়া শেষ ✓", fontSize = 17.sp) }
-                if (page != bmPage) Text(
-                    "বুকমার্কের পৃষ্ঠা নয় — আজকের লক্ষ্যে গোনা হবে, বুকমার্ক নড়বে না।", fontSize = 12.sp, color = Muted,
-                    modifier = Modifier.padding(bottom = 12.dp),
-                )
-            }
-        }
-        // নিচের বার: পৃষ্ঠা বদল, তিলাওয়াত, রিপিট
-        Row(Modifier.fillMaxWidth().background(androidx.compose.ui.graphics.Color.White).padding(horizontal = 6.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            TextButton(enabled = page > 1, onClick = { QuranAudio.stop(); page-- }) { Text("‹ আগের", color = Emerald800) }
-            Spacer(Modifier.weight(1f))
-            TextButton(onClick = { if (playing != null) QuranAudio.stop() else play(range.first) }) {
-                Text(if (playing != null) "■ থামান" else "▶ শুনুন", color = Gold, fontWeight = FontWeight.Bold)
-            }
-            TextButton(onClick = {
-                val opts = listOf(1, 3, 5, 10)
-                repeat = opts[(opts.indexOf(repeat) + 1).mod(opts.size)]
-                p.quranRepeat = repeat
-            }) { Text("রিপিট ${Bn.num(repeat)}×", color = Emerald700, fontSize = 13.sp) }
-            Spacer(Modifier.weight(1f))
-            TextButton(enabled = page < data.index.pageCount, onClick = { QuranAudio.stop(); page++ }) { Text("পরের ›", color = Emerald800) }
-        }
-    }
-
-    menuFor?.let { id ->
-        AlertDialog(
-            onDismissRequest = { menuFor = null },
-            title = { Text("${data.surah(id).nameBn} ${Bn.num(data.surah(id).no)}:${Bn.num(data.index.ayahNo(id))}") },
-            text = {
-                Column {
-                    TextButton(onClick = { play(id); menuFor = null }) { Text("▶ এখান থেকে শুনুন") }
-                    TextButton(onClick = { play(id, only = true); menuFor = null }) { Text("🔁 শুধু এই আয়াত (${Bn.num(repeat)} বার) — মুখস্থের জন্য") }
-                    TextButton(onClick = {
-                        p.quranBookmark = id; p.quranBookmarkLabel = data.label(id); menuFor = null
-                        Toast.makeText(ctx, "বুকমার্ক রাখা হলো", Toast.LENGTH_SHORT).show(); vm.settingsChanged()
-                    }) { Text("🔖 এখানে বুকমার্ক রাখুন") }
-                }
-            },
-            confirmButton = { TextButton(onClick = { menuFor = null }) { Text("বন্ধ") } },
-        )
-    }
-}
-
-/** আরবি সংখ্যা ০–৯ → ٠–٩ */
-private fun arabicNum(n: Int): String = n.toString().map { '٠' + (it - '0') }.joinToString("")
-
 /** হোম স্ক্রিনের ছোট কার্ড — পুরো কুরআন লোড না করে, শুধু Prefs থেকে */
 @Composable
 fun QuranTodayCard(vm: AppVm, open: (String) -> Unit) {
@@ -413,7 +274,7 @@ private fun QToggle(title: String, subtitle: String, checked: Boolean, onChange:
 }
 
 @Composable
-private fun QChoice(title: String, options: List<String>, selected: Int, onDismiss: () -> Unit, onPick: (Int) -> Unit) {
+internal fun QChoice(title: String, options: List<String>, selected: Int, onDismiss: () -> Unit, onPick: (Int) -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },

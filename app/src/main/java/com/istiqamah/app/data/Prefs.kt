@@ -349,6 +349,31 @@ class Prefs(context: Context) {
         get() = sp.getInt("quran_repeat", 1)
         set(v) = sp.edit().putInt("quran_repeat", v.coerceIn(1, 20)).apply()
 
+    // ---------- v0.9: পাঠকের ধরন ----------
+    /** ০ = আয়াত-আয়াত বাংলা অর্থসহ, ১ = শুধু আরবি (মুসহাফের মতো) */
+    var quranMode: Int
+        get() = sp.getInt("quran_mode", 0)
+        set(v) = sp.edit().putInt("quran_mode", v.coerceIn(0, 1)).apply()
+
+    var quranArSize: Int
+        get() = sp.getInt("quran_ar_size", 28)
+        set(v) = sp.edit().putInt("quran_ar_size", v.coerceIn(20, 44)).apply()
+
+    var quranBnSize: Int
+        get() = sp.getInt("quran_bn_size", 17)
+        set(v) = sp.edit().putInt("quran_bn_size", v.coerceIn(13, 26)).apply()
+
+    /** আরবি হরফ মোটা করে দেখানো */
+    var quranBold: Boolean
+        get() = sp.getBoolean("quran_bold", true)
+        set(v) = sp.edit().putBoolean("quran_bold", v).apply()
+
+    // ---------- v0.9: ঈমানের পাঠ ----------
+    /** কুইজ পার হওয়া পাঠের key */
+    var imanDone: Set<String>
+        get() = sp.getStringSet("iman_done", emptySet()) ?: emptySet()
+        set(v) = sp.edit().putStringSet("iman_done", v).apply()
+
     // ---------- v0.5: পুরুষ/মহিলা, জামাত, বিরতি, নীরব রিমাইন্ডার ----------
     var gender: Gender
         get() = Gender.fromCode(sp.getInt("gender", 0))

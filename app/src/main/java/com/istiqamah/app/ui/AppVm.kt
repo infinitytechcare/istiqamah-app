@@ -59,6 +59,8 @@ data class TodayState(
     val muhasabaDone: Boolean,
     val muhasabaStreak: Int,
     val weeklyGoal: String?,
+    /** v0.9: সব আমল মিলিয়ে গত ৩০ দিনের ছবি */
+    val wholeness: com.istiqamah.app.core.WholenessResult? = null,
 ) {
     val isFriday: Boolean get() = today.dayOfWeek == DayOfWeek.FRIDAY
     fun prayerName(p: Prayer) = if (isFriday && p == Prayer.DHUHR) "জুমা / যোহর" else p.bn
@@ -137,6 +139,29 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** আমলের পূর্ণতা — শুধু নিজের ফোনের তথ্য থেকে; কুরআন পুরো লোড করতে হয় না (পড়ার দিন গুনি) */
+    private fun wholeness(store: LogStore, logs: Map<java.time.LocalDate, com.istiqamah.app.core.DayLog>, today: java.time.LocalDate, muhDates: Set<java.time.LocalDate>): com.istiqamah.app.core.WholenessResult {
+        val days = 30L
+        val from = today.minusDays(days - 1)
+        val readDays = store.reads(from, today).map { it.date }.toSet().size
+        val azkarDays = store.azkarDone(from, today).filter { it.second == AzkarSet.MORNING || it.second == AzkarSet.EVENING }.map { it.first }.toSet().size
+        val nafl = store.fasts(from, today).count { (d, st) -> st == com.istiqamah.app.core.FastStatus.FASTED && prefs.hijri(d)?.isRamadan != true }
+        val log = prefs.sadaqahLog.filter { !it.first.isBefore(today.minusDays(27)) && !it.first.isAfter(today) }
+        val weeks = log.map { java.time.temporal.ChronoUnit.DAYS.between(it.first, today) / 7 }.toSet().size
+        return com.istiqamah.app.core.Wholeness.of(
+            com.istiqamah.app.core.WholenessInput(
+                days = days.toInt(),
+                salahOnTime = Habit.onTimeRatio(logs, today, days.toInt()),
+                quranDays = readDays.takeIf { prefs.quranOn || it > 0 },
+                azkarDays = azkarDays,
+                muhasabaDays = muhDates.count { !it.isBefore(from) },
+                naflFasts = nafl.takeIf { prefs.fastingOn || it > 0 },
+                sadaqahWeeks = weeks.takeIf { prefs.sadaqahDay != null || log.isNotEmpty() },
+                imanLessons = prefs.imanDone.count { com.istiqamah.app.core.Iman.byKey(it) != null },
+            ),
+        )
+    }
+
     private fun loadToday(): TodayState? {
         if (!prefs.onboarded) return null
         Engine.evaluateStageIfNeeded(ctx)
@@ -170,6 +195,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             muhasabaDone = today in muhDates,
             muhasabaStreak = muhStreak,
             weeklyGoal = goal,
+            wholeness = runCatching { wholeness(store, logs, today, muhDates) }.getOrNull(),
         )
     }
 
