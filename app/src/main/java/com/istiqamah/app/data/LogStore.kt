@@ -24,7 +24,7 @@ class LogStore private constructor(context: Context) :
     SQLiteOpenHelper(context.applicationContext, "istiqamah.db", null, DB_VERSION) {
 
     companion object {
-        private const val DB_VERSION = 5
+        private const val DB_VERSION = 6
 
         @Volatile private var instance: LogStore? = null
         fun get(context: Context): LogStore =
@@ -46,6 +46,13 @@ class LogStore private constructor(context: Context) :
         createV3(db)
         createV4(db)
         createV5(db)
+        createV6(db)
+    }
+
+    /** v6 (০.১৪): ম্যাকের সাথে সিঙ্ক — কোন যন্ত্রে চিহ্ন দেওয়া, আর মুছে ফেলার স্মৃতি */
+    private fun createV6(db: SQLiteDatabase) {
+        db.execSQL("ALTER TABLE prayer_log ADD COLUMN src TEXT NOT NULL DEFAULT 'phone'")
+        db.execSQL("CREATE TABLE IF NOT EXISTS prayer_tomb(date TEXT NOT NULL, prayer INTEGER NOT NULL, deleted_at INTEGER NOT NULL, src TEXT NOT NULL, PRIMARY KEY(date, prayer))")
     }
 
     /** v0.9.5: সুন্নাত/নফল নামাজ (১২ রাকাত, বিতর, তাহাজ্জুদ, দোহা) আর নামাজের পর খুশুর মাপ */
@@ -99,23 +106,53 @@ class LogStore private constructor(context: Context) :
         if (oldVersion < 3) createV3(db)
         if (oldVersion < 4) createV4(db)
         if (oldVersion < 5) createV5(db)
+        if (oldVersion < 6) createV6(db)
     }
 
     // ---------- নামাজের লগ ----------
 
-    fun setStatus(date: LocalDate, prayer: Prayer, status: PrayerStatus?) {
+    /**
+     * চিহ্ন দেওয়া বা মোছা। [ts]/[src] শুধু ম্যাক থেকে আসা চিহ্ন বসানোর সময় আলাদা হয় —
+     * নিজের চিহ্ন হলে এখনকার সময় আর "phone"।
+     */
+    fun setStatus(date: LocalDate, prayer: Prayer, status: PrayerStatus?, ts: Long = System.currentTimeMillis(), src: String = "phone") {
         val db = writableDatabase
-        if (status == null) {
-            db.delete("prayer_log", "date=? AND prayer=?", arrayOf(date.toString(), prayer.ordinal.toString()))
-            return
+        val args = arrayOf(date.toString(), prayer.ordinal.toString())
+        db.beginTransaction()
+        try {
+            if (status == null) {
+                db.delete("prayer_log", "date=? AND prayer=?", args)
+                db.insertWithOnConflict("prayer_tomb", null, ContentValues().apply {
+                    put("date", date.toString()); put("prayer", prayer.ordinal); put("deleted_at", ts); put("src", src)
+                }, SQLiteDatabase.CONFLICT_REPLACE)
+            } else {
+                db.delete("prayer_tomb", "date=? AND prayer=?", args)
+                db.insertWithOnConflict("prayer_log", null, ContentValues().apply {
+                    put("date", date.toString()); put("prayer", prayer.ordinal); put("status", status.code)
+                    put("logged_at", ts); put("src", src)
+                }, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
         }
-        val cv = ContentValues().apply {
-            put("date", date.toString())
-            put("prayer", prayer.ordinal)
-            put("status", status.code)
-            put("logged_at", System.currentTimeMillis())
+    }
+
+    /** সিঙ্কের জন্য [from] থেকে সব চিহ্ন ও মুছে ফেলা — ঘটনা হিসেবে (শুধু নামাজ, আর কিছু নয়) */
+    fun syncEvents(from: LocalDate): List<com.istiqamah.app.core.LogEvent> {
+        val out = ArrayList<com.istiqamah.app.core.LogEvent>()
+        readableDatabase.rawQuery("SELECT date, prayer, status, logged_at, src FROM prayer_log WHERE date >= ?", arrayOf(from.toString())).use { c ->
+            while (c.moveToNext()) {
+                val st = PrayerStatus.fromCode(c.getInt(2)) ?: continue
+                out += com.istiqamah.app.core.LogEvent(LocalDate.parse(c.getString(0)), Prayer.fromOrdinal(c.getInt(1)), st, c.getLong(3), c.getString(4))
+            }
         }
-        db.insertWithOnConflict("prayer_log", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+        readableDatabase.rawQuery("SELECT date, prayer, deleted_at, src FROM prayer_tomb WHERE date >= ?", arrayOf(from.toString())).use { c ->
+            while (c.moveToNext()) {
+                out += com.istiqamah.app.core.LogEvent(LocalDate.parse(c.getString(0)), Prayer.fromOrdinal(c.getInt(1)), null, c.getLong(2), c.getString(3))
+            }
+        }
+        return out
     }
 
     fun day(date: LocalDate): DayLog = range(date, date)[date] ?: DayLog(date, emptyMap())

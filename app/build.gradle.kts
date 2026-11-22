@@ -13,8 +13,8 @@ android {
         minSdk = 26
         targetSdk = 35
         // প্রতি রিলিজে versionCode অবশ্যই বাড়াতে হবে, নইলে আপডেট ইনস্টল হবে না
-        versionCode = 17
-        versionName = "0.13.0"
+        versionCode = 18
+        versionName = "0.14.0"
     }
 
     // স্থায়ী চাবি: CI-তে GitHub Secret থেকে আসে। প্রথম রিলিজ থেকেই একই চাবি —
@@ -73,6 +73,8 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.fragment:fragment-ktx:1.8.5")
+    // v0.14: ম্যাকের জোড়ার QR স্ক্যান (ক্যামেরার অনুমতি শুধু স্ক্যানের সময় চাওয়া হয়)
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")

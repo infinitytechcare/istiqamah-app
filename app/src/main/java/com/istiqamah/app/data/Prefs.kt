@@ -768,6 +768,37 @@ class Prefs(context: Context) {
     var batteryGuideSeen: Boolean
         get() = sp.getBoolean("battery_seen", false)
         set(v) = sp.edit().putBoolean("battery_seen", v).apply()
+
+    // ---------- v0.14: ম্যাকের সাথে Wi-Fi সিঙ্ক ----------
+    /** জোড়ার লিংক (গোপন চাবিসহ) — এনক্রিপ্ট করে রাখা; null = জোড়া নেই */
+    var syncPair: com.istiqamah.app.core.PairInfo?
+        get() = com.istiqamah.app.core.SyncPair.parse(secret("sync_pair").ifBlank { null })
+        set(v) {
+            setSecret("sync_pair", v?.let { com.istiqamah.app.core.SyncPair.uri(it) } ?: "")
+            if (v == null) sp.edit().remove("sync_host").remove("sync_at").remove("sync_ok").remove("sync_mac").apply()
+        }
+
+    /** এই ফোনের এলোমেলো আইডি (একবার তৈরি) */
+    val syncDeviceId: String
+        get() = sp.getString("sync_dev", null) ?: com.istiqamah.app.core.SyncPair.newId().also { sp.edit().putString("sync_dev", it).apply() }
+
+    /** শেষবার যে ঠিকানায় ম্যাক পাওয়া গিয়েছিল (host:port) */
+    var syncLastHost: String
+        get() = sp.getString("sync_host", "") ?: ""
+        set(v) = sp.edit().putString("sync_host", v).apply()
+
+    var syncLastAt: Long
+        get() = sp.getLong("sync_at", 0L)
+        set(v) = sp.edit().putLong("sync_at", v).apply()
+
+    /** শেষ চেষ্টা সফল হয়েছিল কি না */
+    var syncLastOk: Boolean
+        get() = sp.getBoolean("sync_ok", false)
+        set(v) = sp.edit().putBoolean("sync_ok", v).apply()
+
+    var syncMacName: String
+        get() = sp.getString("sync_mac", "") ?: ""
+        set(v) = sp.edit().putString("sync_mac", v).apply()
 }
 
 /** নোটিফিকেশনের শব্দ কোথা থেকে */

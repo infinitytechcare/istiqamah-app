@@ -47,4 +47,16 @@ object SyncLog {
 
     /** পুরনো ইতিহাস ছেঁটে ফেলা: প্রতিটি (দিন, ওয়াক্ত)-এর শুধু সর্বশেষ ঘটনা রাখি */
     fun compact(events: List<LogEvent>): List<LogEvent> = latest(events).values.sortedWith(compareBy({ it.ts }, { it.device }))
+
+    /**
+     * অন্য যন্ত্রের ঘটনার মধ্যে কোনগুলো এই যন্ত্রে বসাতে হবে: যে (দিন, ওয়াক্ত)-এ ওদেরটা আমাদেরটার চেয়ে নতুন।
+     * একই ঘটনা দুদিকে থাকলে কিছু করার নেই — তাই বারবার সিঙ্ক করলেও কিছু বদলায় না।
+     */
+    fun toApply(local: Iterable<LogEvent>, remote: Iterable<LogEvent>): List<LogEvent> {
+        val mine = latest(local)
+        return latest(remote).values.filter { r ->
+            val m = mine[r.date to r.prayer]
+            m == null || newer(r, m)
+        }.sortedWith(compareBy({ it.date }, { it.prayer }))
+    }
 }

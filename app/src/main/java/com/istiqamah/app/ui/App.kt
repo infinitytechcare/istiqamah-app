@@ -111,6 +111,7 @@ fun App(
         r == "deen" -> DeenHubScreen(vm, open, back)
         r == "companions" -> CompanionsScreen(vm, open, back)
         r == "questions" -> QuestionsScreen(vm, back)
+        r == "sync" -> MacSyncScreen(vm, back)
         r != null && r.startsWith("masail:") -> MasailLessonScreen(vm, r.removePrefix("masail:"), open) { route = "deen" }
         r != null && r.startsWith("akhlaq:") -> AkhlaqAreaScreen(vm, r.removePrefix("akhlaq:"), open) { route = "akhlaq" }
         r != null && (r == "reader" || r.startsWith("reader:")) -> QuranReaderScreen(vm, r.removePrefix("reader").removePrefix(":").toIntOrNull(), back)
@@ -138,7 +139,7 @@ fun App(
                     1 -> QuranHomeScreen(vm, open)
                     2 -> AmalScreen(vm, open, requestUnlock)
                     3 -> CalendarScreen(vm)
-                    4 -> SettingsScreen(vm, onOpenBattery = { route = "battery" }, requestUnlock = requestUnlock, onOpenProfile = { route = "jamaat" })
+                    4 -> SettingsScreen(vm, onOpenBattery = { route = "battery" }, requestUnlock = requestUnlock, onOpenProfile = { route = "jamaat" }, onOpenSync = { route = "sync" })
                 }
             }
         }

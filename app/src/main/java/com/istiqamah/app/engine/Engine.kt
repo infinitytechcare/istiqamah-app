@@ -85,6 +85,8 @@ object Engine {
         Notifier.cancelFor(ctx, date, prayer)
         cancelSnooze(ctx, date, prayer)
         reschedule(ctx)
+        // v0.14: ম্যাক জোড়া থাকলে সাথে সাথে জানিয়ে দিই — ম্যাকে আর ডাক বাজবে না
+        PhoneSync.syncAsync(ctx)
     }
 
     /** দিনে একবার ধাপ মূল্যায়ন */

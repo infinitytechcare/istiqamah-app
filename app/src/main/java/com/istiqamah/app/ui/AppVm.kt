@@ -33,6 +33,7 @@ import com.istiqamah.app.data.ContentRepo
 import com.istiqamah.app.data.LogStore
 import com.istiqamah.app.data.Prefs
 import com.istiqamah.app.engine.Engine
+import com.istiqamah.app.engine.PhoneSync
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -435,6 +436,7 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { Engine.reschedule(ctx) }
             refresh()
         }
+        syncMac()
     }
 
     fun onResume() {
@@ -442,5 +444,39 @@ class AppVm(app: Application) : AndroidViewModel(app) {
             withContext(Dispatchers.IO) { Engine.reschedule(ctx) }
             refresh()
         }
+        syncMac()
+    }
+
+    // ---------- v0.14: ম্যাকের সাথে সিঙ্ক ----------
+    var syncVersion by mutableStateOf(0)
+        private set
+
+    /** পেছনে সিঙ্ক; ম্যাক থেকে নতুন চিহ্ন এলে পর্দা হালনাগাদ */
+    fun syncMac() {
+        PhoneSync.syncAsync(ctx) { changed ->
+            viewModelScope.launch {
+                syncVersion++
+                if (changed) refresh()
+            }
+        }
+    }
+
+    suspend fun pairMac(uri: String): PhoneSync.Result? {
+        val r = withContext(Dispatchers.IO) { PhoneSync.pair(ctx, uri) }
+        syncVersion++
+        refresh()
+        return r
+    }
+
+    suspend fun syncMacNow(): PhoneSync.Result {
+        val r = withContext(Dispatchers.IO) { PhoneSync.syncNow(ctx) }
+        syncVersion++
+        refresh()
+        return r
+    }
+
+    fun unpairMac() {
+        PhoneSync.unpair(ctx)
+        syncVersion++
     }
 }

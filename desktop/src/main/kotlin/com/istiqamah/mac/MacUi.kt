@@ -59,6 +59,7 @@ import com.istiqamah.app.core.Gender
 import com.istiqamah.app.core.Intensity
 import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
+import com.istiqamah.app.core.SyncPair
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.LocalTime
@@ -73,8 +74,11 @@ fun statusChoices(g: Gender): List<PrayerStatus> =
     if (g == Gender.FEMALE) listOf(PrayerStatus.ALONE, PrayerStatus.QAZA, PrayerStatus.MISSED)
     else listOf(PrayerStatus.JAMAAH, PrayerStatus.ALONE, PrayerStatus.QAZA, PrayerStatus.MISSED)
 
-fun statusLabel(s: PrayerStatus, g: Gender): String =
-    if (s == PrayerStatus.ALONE && g == Gender.FEMALE) "আউয়াল ওয়াক্তে" else s.bn
+fun statusLabel(s: PrayerStatus, g: Gender): String = when {
+    s == PrayerStatus.ALONE && g == Gender.FEMALE -> "আউয়াল ওয়াক্তে"
+    s == PrayerStatus.EXCUSED -> "চিহ্নিত" // ফোনের বিরতি — ম্যাকের পর্দায় কারণ দেখাই না
+    else -> s.bn
+}
 
 @Composable
 fun Card(modifier: Modifier = Modifier, bg: Color = Color.White, content: @Composable () -> Unit) {
@@ -185,11 +189,12 @@ fun TodayScreen(app: MacApp) {
         }
 
         Text(
-            "ফোনের সাথে Wi-Fi সিঙ্ক আসছে পরের রিলিজে। গুনাহের ট্র্যাকার, যাকাত, দেনা ও ওসিয়ত শুধু ফোনেই থাকবে — ম্যাকে কখনো আসবে না।",
+            syncLine(app) + " গুনাহের ট্র্যাকার, যাকাত, দেনা ও ওসিয়ত শুধু ফোনেই থাকে — ম্যাকে কখনো আসে না।",
             style = MaterialTheme.typography.bodySmall, color = Muted,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             OutlinedButton(onClick = { app.showSettings = true }) { Text("সেটিংস") }
+            OutlinedButton(onClick = { app.showPair = true }) { Text("ফোনের সাথে সিঙ্ক") }
         }
     }
 }
@@ -265,11 +270,25 @@ private val WEEK = listOf(
 @Composable
 fun SettingsScreen(app: MacApp) {
     val s = app.settings
+    val fromPhone = app.pair.paired
     Column(
         Modifier.fillMaxSize().background(Cream).verticalScroll(rememberScrollState()).padding(20.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        Section("আপনার জেলা") {
+        if (fromPhone) {
+            Section("ফোন থেকে আসছে") {
+                Text(
+                    "জেলা, হিসাবের পদ্ধতি, জামাত, অফিসের সময় আর ডাকের মাত্রা ${app.pair.phoneName ?: "ফোন"}-এর সেটিংস থেকে আসে। বদলাতে চাইলে ফোনে বদলান — পরের সিঙ্কে এখানে চলে আসবে।",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+                Text(
+                    "📍 ${s.city} · ${s.method.bn} · আসর ${s.madhab.bn}" + if (s.gender != Gender.UNSET) " · ${s.gender.bn}" else "",
+                    style = MaterialTheme.typography.bodySmall, color = Muted,
+                )
+                OutlinedButton(onClick = { app.showPair = true }) { Text("ফোনের সাথে সিঙ্ক…") }
+            }
+        }
+        if (!fromPhone) Section("আপনার জেলা") {
             var open by remember { mutableStateOf(false) }
             Box {
                 OutlinedButton(onClick = { open = true }) { Text("📍 ${s.city}  ▾") }
@@ -300,14 +319,14 @@ fun SettingsScreen(app: MacApp) {
             }
         }
 
-        Section("হিসাবের পদ্ধতি") {
+        if (!fromPhone) Section("হিসাবের পদ্ধতি") {
             RadioList(CalcMethod.entries, s.method, { it.bn }) { m -> app.update { it.copy(method = m) } }
             HorizontalDivider(color = Line)
             Text("আসরের সময়", style = MaterialTheme.typography.bodyMedium)
             RadioList(AsrMadhab.entries, s.madhab, { it.bn }) { m -> app.update { it.copy(madhab = m) } }
         }
 
-        Section("আপনি") {
+        if (!fromPhone) Section("আপনি") {
             RadioList(listOf(Gender.MALE, Gender.FEMALE), s.gender, { it.bn }, {
                 if (it == Gender.MALE) "জামাতের সময় ধরে ডাকব" else "আউয়াল ওয়াক্তে ঘরে পড়ার ডাক"
             }) { g -> app.update { it.copy(gender = g, pausedFrom = if (g == Gender.FEMALE) it.pausedFrom else null) } }
@@ -319,7 +338,7 @@ fun SettingsScreen(app: MacApp) {
             }
         }
 
-        if (s.gender == Gender.MALE) {
+        if (!fromPhone && s.gender == Gender.MALE) {
             Section("জামাত") {
                 SwitchRow("জামাতের সময় ধরে ডাক", "মসজিদের সাধারণ সময় — যোহর ১:৩০, আসর আযানের ২০ মিনিট পর…", s.jamaat.enabled) { on ->
                     app.update { it.copy(jamaat = it.jamaat.copy(enabled = on)) }
@@ -338,7 +357,7 @@ fun SettingsScreen(app: MacApp) {
             }
         }
 
-        Section("অফিসের সময়") {
+        if (!fromPhone) Section("অফিসের সময়") {
             SwitchRow("অফিস আছে", "অফিসের সময়ে অফিসের জামাত ধরা হয়", s.work.enabled) { on -> app.update { it.copy(work = it.work.copy(enabled = on)) } }
             if (s.work.enabled) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -359,7 +378,7 @@ fun SettingsScreen(app: MacApp) {
             }
         }
 
-        Section("ডাকের মাত্রা") {
+        if (!fromPhone) Section("ডাকের মাত্রা") {
             RadioList(Intensity.entries, s.intensity, { it.bn }, { it.desc }) { v -> app.update { it.copy(intensity = v) } }
         }
 
@@ -450,5 +469,102 @@ fun FullScreenCall(app: MacApp, call: ActiveCall) {
                 TextButton(onClick = { app.snooze(call) }) { Text("${Bn.num(MacEngine.SNOOZE_MIN)} মিনিট পরে", color = Color.White.copy(alpha = 0.7f)) }
             }
         }
+    }
+}
+
+// ---------------------------------------------------------------------
+// ফোনের সাথে জোড়া (QR)
+// ---------------------------------------------------------------------
+
+fun syncLine(app: MacApp): String {
+    val p = app.pair
+    if (!p.paired) return "ফোনের সাথে এখনো জোড়া লাগেনি।"
+    val at = if (p.lastSyncAt > 0) java.time.Instant.ofEpochMilli(p.lastSyncAt).atZone(java.time.ZoneId.systemDefault()) else null
+    val whenText = at?.let {
+        val today = java.time.LocalDate.now()
+        (if (it.toLocalDate() == today) "আজ " else Bn.date(it.toLocalDate()) + ", ") + Bn.time(it.toLocalTime())
+    } ?: "—"
+    return "${p.phoneName ?: "ফোন"}-এর সাথে সর্বশেষ সিঙ্ক: $whenText।"
+}
+
+@Composable
+private fun QrCode(text: String, modifier: Modifier = Modifier) {
+    val matrix = remember(text) {
+        runCatching {
+            com.google.zxing.qrcode.QRCodeWriter().encode(
+                text, com.google.zxing.BarcodeFormat.QR_CODE, 0, 0,
+                mapOf(
+                    com.google.zxing.EncodeHintType.MARGIN to 2,
+                    com.google.zxing.EncodeHintType.ERROR_CORRECTION to com.google.zxing.qrcode.decoder.ErrorCorrectionLevel.M,
+                ),
+            )
+        }.getOrNull()
+    }
+    androidx.compose.foundation.Canvas(modifier.background(Color.White)) {
+        val m = matrix ?: return@Canvas
+        val cell = minOf(size.width / m.width, size.height / m.height)
+        val ox = (size.width - cell * m.width) / 2
+        val oy = (size.height - cell * m.height) / 2
+        for (y in 0 until m.height) for (x in 0 until m.width) {
+            if (m.get(x, y)) drawRect(
+                Color.Black,
+                topLeft = androidx.compose.ui.geometry.Offset(ox + x * cell, oy + y * cell),
+                size = androidx.compose.ui.geometry.Size(cell + 0.5f, cell + 0.5f),
+            )
+        }
+    }
+}
+
+@Composable
+fun PairScreen(app: MacApp) {
+    val p = app.pair
+    val info = remember(p.key.contentHashCode(), app.syncPort) { app.pairInfo() }
+    var confirmReset by remember { mutableStateOf(false) }
+    Column(
+        Modifier.fillMaxSize().background(Cream).verticalScroll(rememberScrollState()).padding(20.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp), horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        if (p.paired) {
+            Card(bg = Emerald50) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("✓ ${p.phoneName ?: "ফোন"}-এর সাথে জোড়া লাগানো", style = MaterialTheme.typography.titleMedium, color = Emerald900)
+                    Text(syncLine(app), style = MaterialTheme.typography.bodySmall, color = Muted)
+                    Text(
+                        "ফোনে চিহ্ন দিলে সাথে সাথে এখানে আসে; এখানে দিলে ফোন পরের বার অ্যাপ খুললে বা ডাক বাজার ঠিক আগে নিয়ে নেয় — তাই একই নামাজে দুই জায়গায় ডাক বাজে না।",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
+        } else {
+            Text("ফোনের সাথে জোড়া লাগান", style = MaterialTheme.typography.titleLarge, color = Emerald900)
+        }
+        if (info.hosts.isEmpty() || app.syncPort == 0) {
+            Card(bg = Color(0xFFFFF4E5)) {
+                Text(
+                    if (app.syncPort == 0) "সিঙ্ক চালু করা যায়নি — অন্য কোনো প্রোগ্রাম পোর্ট আটকে রেখেছে। অ্যাপটা বন্ধ করে আবার খুলুন।"
+                    else "ম্যাক এখন কোনো Wi-Fi-তে নেই। ফোন আর ম্যাক একই Wi-Fi-তে যুক্ত করুন।",
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+        }
+        if (!p.paired || confirmReset) {
+            Text(
+                "১. ফোনে ইস্তিকামাহ → সেটিংস → \"ম্যাকের সাথে সিঙ্ক\" → \"QR স্ক্যান করুন\"\n২. এই কোডটা ফোনের ক্যামেরায় ধরুন\n৩. ফোন আর ম্যাক একই Wi-Fi-তে থাকলেই হবে",
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            QrCode(SyncPair.uri(info), Modifier.size(260.dp).clip(RoundedCornerShape(12.dp)).border(1.dp, Line, RoundedCornerShape(12.dp)))
+            Text(
+                "এই কোডে গোপন চাবি আছে — অন্য কাউকে দেখাবেন না বা ছবি তুলে পাঠাবেন না।",
+                style = MaterialTheme.typography.bodySmall, color = Color(0xFFB5452F), textAlign = TextAlign.Center,
+            )
+        } else {
+            OutlinedButton(onClick = { app.resetPair(); confirmReset = true }) { Text("অন্য ফোন জোড়া লাগান (নতুন QR)") }
+            Text("নতুন QR বানালে আগের ফোন আর সিঙ্ক করতে পারবে না।", style = MaterialTheme.typography.bodySmall, color = Muted)
+        }
+        Text(
+            "যা মেলে: পাঁচ ওয়াক্তের চিহ্ন (দুই দিকে), আর ফোনের জেলা, হিসাব, জামাত, অফিস ও ডাকের মাত্রা (ফোন → ম্যাক)। " +
+                "সব এনক্রিপ্ট করা, শুধু আপনার Wi-Fi-র ভেতরে — ইন্টারনেটে বা কোনো সার্ভারে যায় না। গুনাহের ট্র্যাকার, যাকাত, দেনা, ওসিয়ত কখনো আসে না।",
+            style = MaterialTheme.typography.bodySmall, color = Muted,
+        )
     }
 }

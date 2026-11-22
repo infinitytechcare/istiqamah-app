@@ -8,7 +8,7 @@ plugins {
 }
 
 /** ম্যাক অ্যাপের ভার্সন — ফোনের থেকে আলাদা (DMG-তে প্রথম সংখ্যা ০ হতে পারে না) */
-val macVersion = "1.0.0"
+val macVersion = "1.1.0"
 
 group = "com.istiqamah.mac"
 version = macVersion
@@ -26,6 +26,8 @@ sourceSets {
         kotlin {
             // ফোনের হিসাবের অংশ হুবহু — একই নামাজের সময়, একই জামাত, একই রিমাইন্ডার পরিকল্পনা
             srcDir("$core/core")
+            // ফোন ↔ ম্যাক সিঙ্কের তার — দুই অ্যাপে একই ফাইল
+            srcDir("$core/sync")
             srcDir(layout.buildDirectory.dir("generated/shared"))
         }
         resources {
@@ -54,6 +56,8 @@ dependencies {
     implementation(compose.desktop.currentOs)
     implementation(compose.material3)
     implementation("org.json:json:20240303")
+    // জোড়ার QR কোড আঁকতে (শুধু তৈরি করা; ক্যামেরা নেই)
+    implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
 }
 
@@ -81,6 +85,10 @@ compose.desktop {
                     extraKeysRawXml = """
                         <key>LSUIElement</key>
                         <true/>
+                        <key>NSLocalNetworkUsageDescription</key>
+                        <string>একই Wi-Fi-তে আপনার ফোনের ইস্তিকামাহ অ্যাপের সাথে নামাজের চিহ্ন মেলাতে। ইন্টারনেটে কিছু যায় না।</string>
+                        <key>NSBonjourServices</key>
+                        <array><string>_istiqamah._tcp</string></array>
                         <key>NSHumanReadableCopyright</key>
                         <string>Istiqamah</string>
                     """.trimIndent()

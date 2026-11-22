@@ -15,6 +15,10 @@ import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
 import com.istiqamah.app.core.PrayerWindow
 import com.istiqamah.app.core.SyncLog
+import com.istiqamah.app.core.PairInfo
+import com.istiqamah.app.core.SyncPair
+import com.istiqamah.app.sync.SyncWire
+import org.json.JSONObject
 import java.time.LocalDate
 import java.time.ZonedDateTime
 
@@ -38,6 +42,13 @@ class MacApp(private val store: MacStore = MacStore()) {
 
     var showToday by mutableStateOf(false)
     var showSettings by mutableStateOf(false)
+    var showPair by mutableStateOf(false)
+
+    // ---------- ফোনের সাথে সিঙ্ক ----------
+    var pair by mutableStateOf(store.loadPair()); private set
+    var syncPort by mutableStateOf(0); private set
+    private var bonjour: Process? = null
+    private val server = SyncServer(key = { pair.key }, handle = { req -> onUiThread { onSyncRequest(req) } })
     val calls = mutableStateListOf<ActiveCall>()
     var fullScreen by mutableStateOf<ActiveCall?>(null)
 
@@ -57,6 +68,62 @@ class MacApp(private val store: MacStore = MacStore()) {
     init {
         MacSystem.setLaunchAtLogin(settings.launchAtLogin)
         refresh(ZonedDateTime.now())
+        startSync()
+    }
+
+    private fun startSync() {
+        syncPort = server.start()
+        bonjour = MacNet.advertise(pair.macId, syncPort)
+        Runtime.getRuntime().addShutdownHook(Thread { runCatching { bonjour?.destroy() } })
+    }
+
+    /** UI-র থ্রেডে চালিয়ে ফল ফেরত (সার্ভারের থ্রেড থেকে ডাকা হয়) */
+    private fun <T> onUiThread(f: () -> T): T? {
+        if (java.awt.EventQueue.isDispatchThread()) return f()
+        var out: T? = null
+        runCatching { java.awt.EventQueue.invokeAndWait { out = f() } }
+        return out
+    }
+
+    fun pairInfo(): PairInfo = MacNet.pairInfo(pair, syncPort)
+
+    /** নতুন চাবি — আগের জোড়া ফোন আর সিঙ্ক করতে পারবে না, আবার স্ক্যান করতে হবে */
+    fun resetPair() {
+        pair = MacPair(pair.macId, SyncPair.newKey())
+        runCatching { store.savePair(pair) }
+    }
+
+    /** ফোনের প্রশ্নের উত্তর: চিহ্ন মেলানো, ফোনের সেটিংস বসানো, ম্যাকের চিহ্ন ফেরত */
+    fun onSyncRequest(req: JSONObject): JSONObject? {
+        val nowMs = System.currentTimeMillis()
+        if (req.optInt("v") != 1 || req.optString("dev") != "phone") return null
+        if (kotlin.math.abs(nowMs - req.optLong("ts")) > SyncWire.MAX_SKEW_MS) return null
+        val phoneId = req.optString("id", "").take(32).ifBlank { return null }
+        val from = LocalDate.now().minusDays(SyncWire.WINDOW_DAYS)
+        val remote = SyncWire.parseEvents(req.optJSONArray("events")).filter { !it.date.isBefore(from) }
+        val apply = SyncLog.toApply(events, remote)
+        if (apply.isNotEmpty()) {
+            events = SyncLog.compact(SyncLog.merge(events, apply))
+            runCatching { store.saveEvents(events) }
+            logs = SyncLog.dayLogs(events)
+            // ফোনে পড়া হয়ে গেলে ম্যাকের খোলা ডাক বন্ধ
+            for (e in apply.filter { it.status != null }) {
+                calls.removeAll { it.reminder.notif.date == e.date && it.reminder.notif.prayer == e.prayer }
+                if (fullScreen?.reminder?.notif?.let { it.date == e.date && it.prayer == e.prayer } == true) fullScreen = null
+                snoozed.removeAll { it.second.date == e.date && it.second.prayer == e.prayer }
+            }
+        }
+        SyncWire.parseSettings(req.optJSONObject("settings"))?.let { ps ->
+            val next = settings.withPhone(ps)
+            if (next != settings) {
+                settings = next
+                runCatching { store.saveSettings(settings) }
+            }
+        }
+        pair = pair.copy(phoneId = phoneId, phoneName = req.optString("name", "ফোন").take(40), lastSyncAt = nowMs)
+        runCatching { store.savePair(pair) }
+        refresh(ZonedDateTime.now())
+        return SyncWire.response(MacNet.hostName(), events.filter { !it.date.isBefore(from) })
     }
 
     private fun refresh(t: ZonedDateTime) {
@@ -158,6 +225,7 @@ class MacApp(private val store: MacStore = MacStore()) {
         when (mode) {
             "today" -> showToday = true
             "settings" -> showSettings = true
+            "pair" -> showPair = true
             "call" -> fire(PlannedNotif(w.start.toLocalDate(), w.prayer, NotifKind.N1_INVITE, t), forceCall = true)
             "full" -> fire(PlannedNotif(w.start.toLocalDate(), w.prayer, NotifKind.N3_LAST_CALL, t))
         }

@@ -96,6 +96,7 @@ private fun ApplicationScope.IstiqamahMac() {
             Separator()
             Item("আজকের নামাজ…", onClick = { app.showToday = true })
             Item("সেটিংস…", onClick = { app.showSettings = true })
+            Item(if (app.pair.paired) "ফোন: ${app.pair.phoneName ?: "জোড়া লাগানো"} ✓" else "ফোনের সাথে সিঙ্ক…", onClick = { app.showPair = true })
             Separator()
             Item("বন্ধ করুন", onClick = { exitApplication() })
         },
@@ -118,6 +119,16 @@ private fun ApplicationScope.IstiqamahMac() {
         ) {
             LaunchedEffect(Unit) { bringToFront() }
             MacTheme { SettingsScreen(app) }
+        }
+    }
+
+    if (app.showPair) {
+        Window(
+            onCloseRequest = { app.showPair = false }, title = "ফোনের সাথে সিঙ্ক — ইস্তিকামাহ",
+            state = rememberWindowState(size = DpSize(460.dp, 720.dp), position = WindowPosition(Alignment.Center)),
+        ) {
+            LaunchedEffect(Unit) { bringToFront() }
+            MacTheme { PairScreen(app) }
         }
     }
 

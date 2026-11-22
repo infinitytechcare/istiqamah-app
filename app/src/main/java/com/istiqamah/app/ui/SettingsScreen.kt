@@ -74,7 +74,7 @@ import com.istiqamah.app.engine.Engine
 import java.time.LocalTime
 
 @Composable
-fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> Unit) -> Unit, onOpenProfile: () -> Unit = {}) {
+fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> Unit) -> Unit, onOpenProfile: () -> Unit = {}, onOpenSync: () -> Unit = {}) {
     val ctx = LocalContext.current
     val p = vm.prefs
     // settingsVersion পড়লে সেটিং বদলের পর এই স্ক্রিন আবার আঁকা হয়
@@ -111,6 +111,16 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> U
                         Gender.UNSET -> "রিমাইন্ডার ও আয়াত-হাদিস সেই অনুযায়ী হবে"
                     } + if (p.silentRepeat) " · নীরব রিমাইন্ডার চালু" else "",
                     onOpenProfile,
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            SectionCard {
+                Title("ম্যাকের সাথে সিঙ্ক")
+                Item(
+                    p.syncPair?.let { "✓ " + p.syncMacName.ifBlank { it.name } } ?: "ম্যাকবুকে ইস্তিকামাহ",
+                    if (p.syncPair == null) "ল্যাপটপে কাজের সময়ও নামাজের ডাক — একই Wi-Fi-তে, QR স্ক্যান করে জোড়া"
+                    else "নামাজের চিহ্ন দুই জায়গায় মিলে থাকে",
+                    onOpenSync,
                 )
             }
             Spacer(Modifier.height(12.dp))

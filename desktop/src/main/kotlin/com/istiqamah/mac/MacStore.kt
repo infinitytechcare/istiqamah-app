@@ -11,6 +11,8 @@ import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
 import com.istiqamah.app.core.QuranScript
 import com.istiqamah.app.core.SyncLog
+import com.istiqamah.app.core.SyncPair
+import com.istiqamah.app.sync.SyncWire
 import com.istiqamah.app.core.WorkSchedule
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,6 +27,20 @@ import java.time.LocalTime
 //   events.json   — নামাজের চিহ্নগুলো (SyncLog-এর ঘটনা, ফোনের সাথে মেলানোর জন্য প্রস্তুত)
 // এখানে কখনো গুনাহ, যাকাত, দেনা বা ওসিয়তের কিছু থাকে না।
 // =====================================================================
+
+/** এই ম্যাকের জোড়ার তথ্য; phoneId == null মানে এখনো কোনো ফোন জোড়া লাগেনি */
+data class MacPair(
+    val macId: String,
+    val key: ByteArray,
+    val phoneId: String? = null,
+    val phoneName: String? = null,
+    val lastSyncAt: Long = 0L,
+) {
+    val paired: Boolean get() = phoneId != null
+    override fun equals(other: Any?) = other is MacPair && macId == other.macId && key.contentEquals(other.key) &&
+        phoneId == other.phoneId && phoneName == other.phoneName && lastSyncAt == other.lastSyncAt
+    override fun hashCode() = macId.hashCode()
+}
 
 class MacStore(private val dir: File = defaultDir()) {
     private val settingsFile = File(dir, "settings.json")
@@ -46,6 +62,34 @@ class MacStore(private val dir: File = defaultDir()) {
         val cutoff = LocalDate.now().minusDays(400)
         val keep = SyncLog.compact(events.filter { !it.date.isBefore(cutoff) })
         atomicWrite(eventsFile, JSONArray(keep.map { eventJson(it) }).toString())
+    }
+
+    // ---------- জোড়া (sync.json): এই ম্যাকের আইডি, গোপন চাবি, জোড়া লাগা ফোন ----------
+    private val syncFile = File(dir, "sync.json")
+
+    fun loadPair(): MacPair {
+        val o = runCatching { JSONObject(syncFile.readText()) }.getOrNull()
+        val id = o?.optString("id", "")?.takeIf { it.matches(Regex("[a-z0-9]{4,16}")) }
+        val key = SyncPair.keyFromString(o?.optString("key", ""))
+        if (id == null || key == null) return MacPair(SyncPair.newId(), SyncPair.newKey()).also { savePair(it) }
+        return MacPair(
+            id, key,
+            phoneId = o.optString("phoneId", "").ifBlank { null },
+            phoneName = o.optString("phoneName", "").ifBlank { null },
+            lastSyncAt = o.optLong("lastSyncAt", 0L),
+        )
+    }
+
+    fun savePair(p: MacPair) {
+        atomicWrite(syncFile, JSONObject()
+            .put("id", p.macId).put("key", SyncPair.keyToString(p.key))
+            .put("phoneId", p.phoneId ?: "").put("phoneName", p.phoneName ?: "")
+            .put("lastSyncAt", p.lastSyncAt).toString())
+        // চাবিটা শুধু এই ইউজার পড়তে পারবে
+        runCatching {
+            syncFile.setReadable(false, false); syncFile.setReadable(true, true)
+            syncFile.setWritable(false, false); syncFile.setWritable(true, true)
+        }
     }
 
     private fun atomicWrite(f: File, text: String) {
@@ -90,15 +134,8 @@ class MacStore(private val dir: File = defaultDir()) {
             .put("adjust", JSONArray(s.adjust))
             .put("gender", s.gender.code)
             .put("intensity", s.intensity.code)
-            .put("jamaat", JSONObject()
-                .put("enabled", s.jamaat.enabled)
-                .put("officeDhuhr", t(s.jamaat.officeDhuhr))
-                .put("officeAsr", t(s.jamaat.officeAsr))
-                .put("leadMin", s.jamaat.leadMin))
-            .put("work", JSONObject()
-                .put("enabled", s.work.enabled)
-                .put("days", JSONArray(s.work.days.map { it.value }.sorted()))
-                .put("start", s.work.start.toString()).put("end", s.work.end.toString()))
+            .put("jamaat", SyncWire.jamaatJson(s.jamaat))
+            .put("work", SyncWire.workJson(s.work))
             .put("callWindow", s.callWindow).put("fullScreenLast", s.fullScreenLast)
             .put("sound", s.sound).put("launchAtLogin", s.launchAtLogin)
             .put("pausedFrom", s.pausedFrom?.toString() ?: JSONObject.NULL)
@@ -121,18 +158,8 @@ class MacStore(private val dir: File = defaultDir()) {
                 adjust = adj,
                 gender = Gender.entries.firstOrNull { it.code == o.optInt("gender", 0) } ?: Gender.UNSET,
                 intensity = Intensity.fromCode(o.optInt("intensity", d.intensity.code)),
-                jamaat = if (j == null) d.jamaat else JamaatSettings(
-                    enabled = j.optBoolean("enabled", true),
-                    officeDhuhr = j.time("officeDhuhr", d.jamaat.officeDhuhr),
-                    officeAsr = j.time("officeAsr", d.jamaat.officeAsr),
-                    leadMin = j.optInt("leadMin", 15).coerceIn(5, 45),
-                ),
-                work = if (w == null) d.work else WorkSchedule(
-                    enabled = w.optBoolean("enabled", true),
-                    days = w.optJSONArray("days")?.let { a -> (0 until a.length()).mapNotNull { i -> runCatching { DayOfWeek.of(a.getInt(i)) }.getOrNull() }.toSet() } ?: d.work.days,
-                    start = w.time("start", d.work.start) ?: d.work.start,
-                    end = w.time("end", d.work.end) ?: d.work.end,
-                ),
+                jamaat = if (j == null) d.jamaat else SyncWire.parseJamaat(j, d.jamaat),
+                work = if (w == null) d.work else SyncWire.parseWork(w, d.work),
                 callWindow = o.optBoolean("callWindow", d.callWindow),
                 fullScreenLast = o.optBoolean("fullScreenLast", d.fullScreenLast),
                 sound = o.optBoolean("sound", d.sound),

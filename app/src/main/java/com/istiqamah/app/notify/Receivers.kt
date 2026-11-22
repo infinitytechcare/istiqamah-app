@@ -9,6 +9,7 @@ import com.istiqamah.app.core.PlannedNotif
 import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
 import com.istiqamah.app.engine.Engine
+import com.istiqamah.app.engine.PhoneSync
 import java.time.LocalDate
 import kotlin.concurrent.thread
 
@@ -34,6 +35,11 @@ class AlarmReceiver : BroadcastReceiver() {
                 val kind = runCatching { NotifKind.valueOf(intent.getStringExtra(Engine.EXTRA_KIND) ?: "") }.getOrNull() ?: return@work
                 val p = intent.getIntExtra(Engine.EXTRA_PRAYER, -1).takeIf { it in 0..4 }?.let(Prayer::fromOrdinal)
                 val date = runCatching { LocalDate.parse(intent.getStringExtra(Engine.EXTRA_DATE)) }.getOrElse { Engine.today(ctx) }
+                val isTest = intent.getBooleanExtra(Engine.EXTRA_TEST, false)
+                // v0.14: ডাকের ঠিক আগে ম্যাক থেকে খবর নিই — ম্যাকে পড়া হয়ে গেলে ফোন আর বাজবে না
+                if (kind.isPrayer && p != null && !isTest && PhoneSync.paired(ctx) != null) {
+                    runCatching { PhoneSync.syncNow(ctx, budgetMs = 2500) }
+                }
                 Notifier.showFor(ctx, kind, p, date, isTest = intent.getBooleanExtra(Engine.EXTRA_TEST, false))
                 // নীরব রিমাইন্ডার: পরেরটা বসাতে পুরো হিসাব আবার
                 if (kind == NotifKind.SILENT_REPEAT) Engine.reschedule(ctx)

@@ -6,6 +6,7 @@ on:
     paths:
       - 'desktop/**'
       - 'app/src/main/java/com/istiqamah/app/core/**'
+      - 'app/src/main/java/com/istiqamah/app/sync/**'
       - 'app/src/main/java/com/istiqamah/app/data/Cities.kt'
       - 'app/src/main/assets/content.json'
       - '.github/workflows/build-mac.yml'
@@ -40,7 +41,7 @@ jobs:
         run: |
           APP=desktop/build/compose/binaries/main/app/Istiqamah.app
           mkdir -p shots
-          for m in today settings call full; do
+          for m in today settings call full pair; do
             ISTIQAMAH_DEMO=$m "$APP/Contents/MacOS/Istiqamah" > "shots/$m.log" 2>&1 &
             PID=$!
             sleep 14

@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <!-- ইচ্ছা করে INTERNET permission নেই: অ্যাপ কোনো ডেটা বাইরে পাঠাতে পারে না -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- নামাজের সময় ঠিক মিনিটে রিমাইন্ডার: Android 12 এ SCHEDULE_EXACT_ALARM, 13+ এ USE_EXACT_ALARM -->
@@ -11,7 +10,8 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- v0.4: ঘরে-একা ওয়াক্তে অ্যালার্ম-ঘড়ির মতো পুরো পর্দার ডাক (Android 14+ এ ইউজার আলাদা করে অনুমতি দেন) -->
     <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
-    <!-- v0.6: শুধু কুরআনের তিলাওয়াত (everyayah.com) নামানোর জন্য; কোনো ব্যক্তিগত তথ্য পাঠানো হয় না -->
+    <!-- v0.6: কুরআনের তিলাওয়াত (everyayah.com) নামানো; v0.14: জোড়া লাগানো নিজের ম্যাকের সাথে একই Wi-Fi-তে এনক্রিপ্টেড সিঙ্ক।
+         ব্যক্তিগত তথ্য কখনো ইন্টারনেটের কোনো সার্ভারে যায় না। -->
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
