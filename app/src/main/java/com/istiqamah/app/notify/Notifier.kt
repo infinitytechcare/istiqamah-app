@@ -287,8 +287,9 @@ object Notifier {
             female = female, countdown = home || silent || strong, sticky = silent || strong,
         )
         // ফোন চালু অবস্থায় Android পুরো পর্দা না দেখিয়ে ওপরে ছোট করে দেখায় — "অন্য অ্যাপের ওপরে" অনুমতি থাকলে সরাসরি খুলি
+        // v0.16: Activity নয়, সব অ্যাপের ওপরে জানালা — Home চাপলেও সরে না
         if (strong && prefs.strongOverlay && canOverlay(ctx)) {
-            runCatching { ctx.startActivity(PrayerCallActivity.callIntent(ctx, date, prayer, opened?.id, strong = true, title = title)) }
+            CallOverlay.show(ctx, date, prayer, title, window.end.toInstant().toEpochMilli(), opened)
         }
     }
 
@@ -655,5 +656,7 @@ object Notifier {
     fun cancelFor(ctx: Context, date: LocalDate, prayer: Prayer) {
         val nm = NotificationManagerCompat.from(ctx)
         for (k in NotifKind.entries) nm.cancel(PlannedNotif(date, prayer, k, Engine.now(ctx)).id)
+        // v0.16: অন্য অ্যাপের ওপরের পুরো পর্দাও সরাই
+        CallOverlay.resolve(date, prayer)
     }
 }

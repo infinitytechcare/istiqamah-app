@@ -30,6 +30,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -105,8 +106,12 @@ class PrayerCallActivity : ComponentActivity() {
             })
             setFinishOnTouchOutside(false)
             val name = if (prayer == Prayer.DHUHR && date.dayOfWeek == java.time.DayOfWeek.FRIDAY) "জুমা/যোহর" else prayer.bn
+            val myKey = CallOverlay.key(date, prayer)
             setContent {
                 IstiqamahTheme {
+                    // অন্য পথে (ওপরের জানালা, নোটিফিকেশন, ম্যাক) মীমাংসা হলে এই পর্দাও বন্ধ
+                    val done by CallOverlay.resolved.collectAsState()
+                    LaunchedEffect(done) { if (myKey in done) finish() }
                     StrongCallScreen(
                         title = intent.getStringExtra(EXTRA_TITLE) ?: "এখন $name",
                         endMillis = end?.toInstant()?.toEpochMilli(),
@@ -255,7 +260,7 @@ private fun CallScreen(
  * এখনই যাচ্ছি · ১০ মিনিট পরে · (পুরুষ) জামাতে পড়েছি · পড়েছি (একা) · কাযা পড়েছি
  */
 @Composable
-private fun StrongCallScreen(
+internal fun StrongCallScreen(
     title: String,
     endMillis: Long?,
     item: ContentItem?,

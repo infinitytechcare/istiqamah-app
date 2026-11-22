@@ -140,7 +140,8 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> U
                     val ctx = LocalContext.current
                     Text(
                         "কড়া মাত্রায় প্রতিটা ডাক পুরো পর্দায় আসে, আর \"এখনই যাচ্ছি\", \"১০ মিনিট পরে\" বা \"পড়েছি\" না চাপা পর্যন্ত সরে না। " +
-                            "লক স্ক্রিনে সবসময় পুরো পর্দা; ফোন হাতে চালু থাকলে নিচের অনুমতি দিলে তখনও পুরো পর্দা।",
+                            "\"অন্য অ্যাপের ওপরে দেখানো\" অনুমতি দিলে ফোন চালু থাকলেও পুরো পর্দা আসে, আর Home বা Back চাপলেও সরে না। " +
+                            "ফোনে কথা বলার সময় পর্দা আসে না, কল এলে সরে যায়।",
                         fontSize = 13.sp, color = Muted, lineHeight = 19.sp,
                     )
                     if (Build.VERSION.SDK_INT >= 34 && !com.istiqamah.app.notify.Notifier.canFullScreen(ctx)) {
@@ -153,7 +154,7 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> U
                             runCatching { ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))) }
                         }, modifier = Modifier.padding(top = 6.dp)) { Text("অন্য অ্যাপের ওপরে দেখানোর অনুমতি দিন", color = Emerald800) }
                     } else {
-                        Text("✓ অন্য অ্যাপের ওপরেও পুরো পর্দা দেখাবে", fontSize = 13.sp, color = Emerald700, modifier = Modifier.padding(top = 4.dp))
+                        Text("✓ অন্য অ্যাপের ওপরেও পুরো পর্দা — Home চাপলেও সরবে না", fontSize = 13.sp, color = Emerald700, modifier = Modifier.padding(top = 4.dp))
                     }
                 }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
