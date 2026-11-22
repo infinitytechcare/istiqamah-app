@@ -72,6 +72,7 @@ class MacApp(private val store: MacStore = MacStore()) {
     }
 
     private fun startSync() {
+        Thread { MacNet.hostName(); MacNet.localAddresses() }.apply { isDaemon = true }.start() // আগেভাগে পড়ে রাখি
         syncPort = server.start()
         bonjour = MacNet.advertise(pair.macId, syncPort)
         Runtime.getRuntime().addShutdownHook(Thread { runCatching { bonjour?.destroy() } })

@@ -6,7 +6,6 @@ import org.json.JSONObject
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.net.Inet4Address
-import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.NetworkInterface
 import java.net.ServerSocket
@@ -89,10 +88,23 @@ object MacNet {
             .distinct()
     }.getOrDefault(emptyList())
 
-    fun hostName(): String = runCatching {
-        // "Bayejids-MacBook-Pro.local" → "Bayejids MacBook Pro"
-        InetAddress.getLocalHost().hostName.removeSuffix(".local").replace('-', ' ').take(40)
-    }.getOrDefault("Mac")
+    /**
+     * ম্যাকের নাম ("Bayejid’s MacBook Pro") — scutil দিয়ে একবার পড়ে রাখি।
+     * InetAddress.getLocalHost() ম্যাকে কয়েক সেকেন্ড আটকে থাকতে পারে, তাই সেটা নয়।
+     */
+    private val name: String by lazy {
+        runCatching {
+            if (!MacSystem.isMac) error("not mac")
+            val p = ProcessBuilder("/usr/sbin/scutil", "--get", "ComputerName").redirectErrorStream(true).start()
+            val out = p.inputStream.bufferedReader().readText().trim()
+            if (!p.waitFor(2, TimeUnit.SECONDS) || p.exitValue() != 0) error("scutil")
+            out
+        }.getOrNull()?.takeIf { it.isNotBlank() }?.take(40)
+            ?: System.getenv("HOSTNAME")?.removeSuffix(".local")?.take(40)
+            ?: "Mac"
+    }
+
+    fun hostName(): String = name
 
     /** Bonjour-এ নিজেকে জানানো — macOS-এর নিজস্ব dns-sd দিয়ে (আলাদা কোনো লাইব্রেরি নয়) */
     fun advertise(macId: String, port: Int): Process? {
