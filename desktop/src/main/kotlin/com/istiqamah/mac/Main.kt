@@ -149,7 +149,7 @@ private fun ApplicationScope.IstiqamahMac() {
 private fun CallWindow(app: MacApp, call: ActiveCall, index: Int) {
     val b = remember { GraphicsEnvironment.getLocalGraphicsEnvironment().maximumWindowBounds }
     val w = 400
-    val h = 430
+    val h = 500
     Window(
         onCloseRequest = { app.dismiss(call) },
         title = call.reminder.title,
