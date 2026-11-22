@@ -52,6 +52,10 @@ private fun ApplicationScope.IstiqamahMac() {
     val app = remember { MacApp() }
 
     LaunchedEffect(Unit) {
+        System.getenv("ISTIQAMAH_DEMO")?.let { delay(1500); app.demo(it) }
+    }
+
+    LaunchedEffect(Unit) {
         while (true) {
             app.tick(ZonedDateTime.now())
             delay(15_000)

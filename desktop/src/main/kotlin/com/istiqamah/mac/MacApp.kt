@@ -9,6 +9,7 @@ import com.istiqamah.app.core.ContentPicker
 import com.istiqamah.app.core.DayLog
 import com.istiqamah.app.core.JamaatTime
 import com.istiqamah.app.core.LogEvent
+import com.istiqamah.app.core.NotifKind
 import com.istiqamah.app.core.PlannedNotif
 import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
@@ -148,4 +149,17 @@ class MacApp(private val store: MacStore = MacStore()) {
     }
 
     fun todayLog(): DayLog? = logs[now.toLocalDate()]
+
+    /** CI-তে স্ক্রিনশটের জন্য (ISTIQAMAH_DEMO=today|settings|call|full) */
+    fun demo(mode: String) {
+        val t = ZonedDateTime.now()
+        refresh(t)
+        val w = MacEngine.current(windows, t) ?: windows[t.toLocalDate()]?.firstOrNull() ?: return
+        when (mode) {
+            "today" -> showToday = true
+            "settings" -> showSettings = true
+            "call" -> fire(PlannedNotif(w.start.toLocalDate(), w.prayer, NotifKind.N1_INVITE, t), forceCall = true)
+            "full" -> fire(PlannedNotif(w.start.toLocalDate(), w.prayer, NotifKind.N3_LAST_CALL, t))
+        }
+    }
 }
