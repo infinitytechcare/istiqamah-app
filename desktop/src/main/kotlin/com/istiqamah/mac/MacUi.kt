@@ -85,17 +85,20 @@ fun Card(modifier: Modifier = Modifier, bg: Color = Color.White, content: @Compo
 }
 
 @Composable
-fun ContentBlock(item: ContentItem, dark: Boolean = false) {
+fun ContentBlock(item: ContentItem, dark: Boolean = false, compact: Boolean = false) {
     val fg = if (dark) Color.White else Ink
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        if (item.arabic.isNotBlank() && item.arabic.length < 400) {
+        if (item.arabic.isNotBlank() && item.arabic.length < (if (compact) 110 else 400)) {
             Text(
                 item.arabic, fontFamily = Quranic, fontSize = 22.sp, lineHeight = 42.sp, color = if (dark) GoldLight else Emerald800,
                 textAlign = TextAlign.Right, style = MaterialTheme.typography.bodyLarge.copy(textDirection = TextDirection.Rtl),
                 modifier = Modifier.fillMaxWidth(),
             )
         }
-        Text(item.bn.ifBlank { item.shortBn }, style = MaterialTheme.typography.bodyLarge, color = fg)
+        Text(
+            if (compact) item.shortBn.ifBlank { item.bn } else item.bn.ifBlank { item.shortBn },
+            style = if (compact) MaterialTheme.typography.bodyMedium else MaterialTheme.typography.bodyLarge, color = fg,
+        )
         Text(
             "— ${item.refBn}" + (item.grading?.let { " ($it)" } ?: ""),
             style = MaterialTheme.typography.bodySmall, color = if (dark) GoldLight else Muted,
@@ -409,7 +412,7 @@ fun CallCard(app: MacApp, call: ActiveCall) {
             }
             Text(r.body, style = MaterialTheme.typography.bodyMedium, color = Ink)
             call.content?.let {
-                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Emerald50).padding(12.dp)) { ContentBlock(it) }
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(Emerald50).padding(12.dp)) { ContentBlock(it, compact = true) }
             }
             MarkButtons(app, call, dark = false)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

@@ -35,6 +35,8 @@ jobs:
         run: ./gradlew -p desktop createDistributable --no-daemon
 
       - name: Smoke test (চালিয়ে স্ক্রিনশট)
+        env:
+          JAVA_TOOL_OPTIONS: -Duser.timezone=Asia/Dhaka
         run: |
           APP=desktop/build/compose/binaries/main/app/Istiqamah.app
           mkdir -p shots
