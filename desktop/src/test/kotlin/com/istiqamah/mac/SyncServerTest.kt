@@ -71,3 +71,20 @@ class SyncServerTest {
         assertNull(app.onSyncRequest(JSONObject().put("v", 1).put("dev", "mac").put("ts", System.currentTimeMillis())))
     }
 }
+
+/** ম্যাকের QR আঁকা লিংকটা আবার পড়লে হুবহু একই জোড়া পাওয়া যায় */
+class PairQrTest {
+    @Test fun qrDecodesBackToSamePair() {
+        val info = com.istiqamah.app.core.PairInfo("abcd2345", "Bayejid’s MacBook Pro", SyncPair.newKey(), listOf("192.168.1.20"), 47630)
+        val text = SyncPair.uri(info)
+        val m = com.google.zxing.qrcode.QRCodeWriter().encode(text, com.google.zxing.BarcodeFormat.QR_CODE, 0, 0,
+            mapOf(com.google.zxing.EncodeHintType.MARGIN to 2))
+        val scale = 4
+        val w = m.width * scale
+        val h = m.height * scale
+        val px = IntArray(w * h) { i -> if (m.get((i % w) / scale, (i / w) / scale)) 0xFF000000.toInt() else 0xFFFFFFFF.toInt() }
+        val bmp = com.google.zxing.BinaryBitmap(com.google.zxing.common.HybridBinarizer(com.google.zxing.RGBLuminanceSource(w, h, px)))
+        val decoded = com.google.zxing.qrcode.QRCodeReader().decode(bmp).text
+        assertEquals(info, SyncPair.parse(decoded))
+    }
+}
