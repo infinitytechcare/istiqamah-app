@@ -10,7 +10,7 @@ import java.time.ZonedDateTime
 enum class Intensity(val code: Int, val bn: String, val desc: String) {
     LIGHT(1, "হালকা", "শুধু ওয়াক্ত শুরুর সময় একবার"),
     MEDIUM(2, "মাঝারি", "শুরুতে পুরস্কার, ১০ মিনিট পরে ক্ষতি, শেষের ২০ মিনিট আগে সতর্কতা"),
-    STRONG(3, "কড়া", "মাঝারির সব + ওয়াক্তের মাঝামাঝি আরেকটা পুরস্কার");
+    STRONG(3, "কড়া", "ওয়াক্ত শুরু থেকে (জামাত থাকলে জামাতের প্রস্তুতির আগে থেকে) প্রতি ১০ মিনিটে পুরো পর্দার ডাক — চিহ্ন না দেওয়া পর্যন্ত");
 
     companion object {
         fun fromCode(c: Int) = entries.firstOrNull { it.code == c } ?: MEDIUM
@@ -119,7 +119,11 @@ enum class NotifKind(val isPrayer: Boolean, val priority: Int) {
 
     // ---- v0.12: ইলম ----
     /** প্রতিদিন একটু শেখা / মুখস্থের রিভিশন — বেছে নেওয়া সময়ে */
-    ILM_DAILY(false, 2);
+    ILM_DAILY(false, 2),
+
+    // ---- v0.15: কড়া মাত্রা ----
+    /** (কড়া) চিহ্ন না দেওয়া পর্যন্ত প্রতি ১০ মিনিটে পুরো পর্দার ডাক — Planner শুধু পরেরটা বসায় */
+    STRONG_CALL(true, 0);
 
     val isHomeNudge: Boolean get() = this == HOME_NUDGE_1 || this == HOME_NUDGE_2 || this == HOME_NUDGE_3
 
@@ -208,6 +212,10 @@ data class PlannerInput(
     val jamaat: Map<Pair<LocalDate, Prayer>, JamaatTime> = emptyMap(),
     /** জামাতের কত মিনিট আগে প্রথম ডাক */
     val leadMin: Long = 15,
+    /** v0.15: ওয়াক্ত ধরে জামাতের কত আগে ডাক (না থাকলে [leadMin]) */
+    val leads: Map<Prayer, Long> = emptyMap(),
+    /** v0.15: "এখনই যাচ্ছি" চাপার পর এই সময় পর্যন্ত কড়া ডাক চুপ */
+    val goingUntil: Map<Pair<LocalDate, Prayer>, ZonedDateTime> = emptyMap(),
     /** (মহিলা) বিরতি শুরুর তারিখ; null = বিরতি নেই */
     val pausedFrom: LocalDate? = null,
     /** চেক-ইন না করা পর্যন্ত প্রতি ১০ মিনিটে নীরব রিমাইন্ডার */
@@ -232,6 +240,8 @@ object Planner {
     const val JAMAAT_MISSED_AFTER_MIN = 15L
     /** নীরব রিমাইন্ডারের ব্যবধান */
     const val SILENT_EVERY_MIN = 10L
+    /** v0.15: কড়া মাত্রায় নাছোড় ডাকের ব্যবধান */
+    const val STRONG_EVERY_MIN = 10L
     private const val MIN_GAP_MIN = 10L
 
     /** কোন নোটিফিকেশনের পরে কোন ক্ষতির নোটিফিকেশন আসে */
@@ -256,7 +266,7 @@ object Planner {
                     if (jam != null && NotifKind.N1_LOSS in ks) ks + NotifKind.JAMAAT_MISSED else ks
                 }
                 // পুরুষ: জামাতের lead মিনিট আগে (ওয়াক্ত শুরুর আগে নয়); মহিলা/জামাত নেই: ওয়াক্ত শুরুতে
-                val n1 = jam?.minusMinutes(input.leadMin)?.let { if (it.isBefore(w.start)) w.start else it } ?: w.start
+                val n1 = jam?.minusMinutes(input.leads[w.prayer] ?: input.leadMin)?.let { if (it.isBefore(w.start)) w.start else it } ?: w.start
                 val n3 = w.end.minusMinutes(LAST_CALL_BEFORE_END_MIN)
                 val n2 = w.start.plus(Duration.ofSeconds(w.length.seconds * 4 / 10))
                 val n1Loss = n1.plusMinutes(FOLLOW_UP_MIN)
@@ -286,7 +296,11 @@ object Planner {
                     loud += at
                     if (at.isAfter(input.now)) out += PlannedNotif(date, w.prayer, k, at)
                 }
-                if (input.silentRepeat) {
+                if (NotifKind.STRONG_CALL in kinds) {
+                    val quiet = input.goingUntil[date to w.prayer]
+                    val after = if (quiet != null && quiet.isAfter(input.now)) quiet else input.now
+                    nextStrongCall(n1, n3, loud, after)?.let { out += PlannedNotif(date, w.prayer, NotifKind.STRONG_CALL, it) }
+                } else if (input.silentRepeat) {
                     nextSilentRepeat(w, n1, loud, input.now)?.let { out += PlannedNotif(date, w.prayer, NotifKind.SILENT_REPEAT, it) }
                 }
             }
@@ -402,6 +416,20 @@ object Planner {
      * জোরালো ডাকের ৩ মিনিটের মধ্যে পড়লে বাদ, আর ওয়াক্ত শেষের ২ মিনিট আগ পর্যন্ত।
      * Planner শুধু পরেরটা বসায়; সেটা বাজলে পুরো হিসাব আবার হয়, তাই পরেরটা বসে যায়।
      */
+    /**
+     * কড়া মাত্রার পরের ডাক: প্রথম ডাক থেকে প্রতি [STRONG_EVERY_MIN] মিনিটে, শেষ সতর্কতার আগ পর্যন্ত;
+     * অন্য ডাকের ৫ মিনিটের মধ্যে পড়লে বাদ। শুধু পরেরটা — বাজার পর আবার হিসাব।
+     */
+    fun nextStrongCall(n1: ZonedDateTime, n3: ZonedDateTime, loud: List<ZonedDateTime>, after: ZonedDateTime): ZonedDateTime? {
+        var t = n1.plusMinutes(STRONG_EVERY_MIN)
+        while (t.isBefore(n3.minusMinutes(4))) {
+            val clash = loud.any { Math.abs(Duration.between(it, t).toMinutes()) < 5 }
+            if (t.isAfter(after) && !clash) return t
+            t = t.plusMinutes(STRONG_EVERY_MIN)
+        }
+        return null
+    }
+
     fun nextSilentRepeat(w: PrayerWindow, n1: ZonedDateTime, loud: List<ZonedDateTime>, now: ZonedDateTime): ZonedDateTime? {
         var t = n1.plusMinutes(SILENT_EVERY_MIN)
         val last = w.end.minusMinutes(2)
@@ -523,7 +551,8 @@ object Planner {
         return when (input.intensity) {
             Intensity.LIGHT -> listOf(NotifKind.N1_INVITE)
             Intensity.MEDIUM -> listOf(NotifKind.N1_INVITE, NotifKind.N1_LOSS, NotifKind.N3_LAST_CALL)
-            Intensity.STRONG -> listOf(NotifKind.N1_INVITE, NotifKind.N1_LOSS, NotifKind.N2_VIRTUE, NotifKind.N3_LAST_CALL)
+            // v0.15: শুরু থেকে প্রতি ১০ মিনিটে নাছোড় ডাক (পরেরটা আলাদা করে বসে), জামাত ছুটলে আলাদা ডাক, শেষে সতর্কতা
+            Intensity.STRONG -> listOf(NotifKind.N1_INVITE, NotifKind.N1_LOSS, NotifKind.N3_LAST_CALL, NotifKind.STRONG_CALL)
         }
     }
 

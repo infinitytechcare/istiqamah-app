@@ -116,6 +116,7 @@ object SyncWire {
         .put("enabled", j.enabled)
         .put("officeDhuhr", t(j.officeDhuhr)).put("officeAsr", t(j.officeAsr))
         .put("leadMin", j.leadMin)
+        .put("leads", JSONObject().also { l -> Prayer.entries.forEach { p -> l.put(p.name, j.lead(p)) } })
         .put("rules", JSONObject().also { r ->
             Prayer.entries.forEach { p ->
                 val x = j.rule(p)
@@ -135,6 +136,7 @@ object SyncWire {
             officeDhuhr = if (j.has("officeDhuhr")) j.time("officeDhuhr") else def.officeDhuhr,
             officeAsr = if (j.has("officeAsr")) j.time("officeAsr") else def.officeAsr,
             leadMin = j.optInt("leadMin", def.leadMin).coerceIn(0, 60),
+            leads = j.optJSONObject("leads")?.let { l -> Prayer.entries.associateWith { p -> l.optInt(p.name, def.lead(p)).coerceIn(0, 60) } } ?: def.leads,
         )
     }
 

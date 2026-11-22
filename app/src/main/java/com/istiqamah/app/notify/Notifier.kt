@@ -31,6 +31,7 @@ import com.istiqamah.app.core.PrayerStatus
 import com.istiqamah.app.core.Weekly
 import com.istiqamah.app.core.Report
 import com.istiqamah.app.core.Gender
+import com.istiqamah.app.core.Intensity
 import com.istiqamah.app.core.Pause
 import com.istiqamah.app.core.Fasting
 import com.istiqamah.app.core.NaflFast
@@ -143,7 +144,7 @@ object Notifier {
         val home = Situation.isHome(window.start, prefs.homeMode)
         val micro = Situation.microStep(salt + date.dayOfMonth)
         // "ওযু করতে যাচ্ছি" চাপার পরের ১২ মিনিট নাছোড় ডাক নয় (WUDU_CHECK নিজেই খোঁজ নেবে)
-        if (!isTest && kind.isHomeNudge && System.currentTimeMillis() < prefs.wuduUntil(date, prayer)) return
+        if (!isTest && (kind.isHomeNudge || kind == NotifKind.STRONG_CALL) && System.currentTimeMillis() < prefs.wuduUntil(date, prayer)) return
         val pledgeLine = prefs.pledge.takeIf { home && it.isNotBlank() }?.let { "🤝 আপনার ওয়াদা: $it" + (prefs.pledgeWhy.takeIf(String::isNotBlank)?.let { w -> "\nকেন: $w" } ?: "") }
         val gainTags = ContentPicker.tagsFor(Amal.SALAH, prayer, gain = true)
         val lossTags = ContentPicker.tagsFor(Amal.SALAH, prayer, gain = false)
@@ -242,6 +243,20 @@ object Notifier {
                 ).joinToString("\n\n")
                 opened = pick
             }
+            NotifKind.STRONG_CALL -> {
+                // কড়া মাত্রার নাছোড় ডাক — পালা করে পুরস্কার আর ক্ষতি
+                val gain = (now.minute / 10) % 2 == 0
+                val pick = ContentPicker.pickAny(items, if (gain) gainTags else lossTags, seen, today, salt + now.minute)
+                pick?.let { c -> store.markSeen(c.id, today) }
+                val left = Duration.between(now, window.end).toMinutes().coerceAtLeast(1)
+                title = when {
+                    jam != null && now.isBefore(jam.at) -> "$name — $jamText, কাজ রেখে রওনা দিন"
+                    else -> "$name এখনো পড়া হয়নি — আর ${Bn.duration(left)}"
+                }
+                shortText = pick?.shortBn ?: "কাজ একটু থামান — আগে আল্লাহর ডাক।"
+                bigText = listOfNotNull(pick?.let { c -> "${c.shortBn}\n— ${c.refBn}" }, "👉 $micro", pledgeLine).joinToString("\n\n")
+                opened = pick
+            }
             NotifKind.WUDU_CHECK -> {
                 val pick = ContentPicker.pickAny(items, listOf("ease"), seen, today, salt)
                 pick?.let { c -> store.markSeen(c.id, today) }
@@ -256,15 +271,29 @@ object Notifier {
         cancelFor(ctx, date, prayer)
         val id = PlannedNotif(date, prayer, kind, now).id
         // শুরু আর শেষ সতর্কতায় (ঘরে থাকলে) অ্যালার্ম-ঘড়ির মতো পুরো পর্দা — লক স্ক্রিনেও
-        val callPi = if (home && prefs.fullScreenCall && (kind == NotifKind.N1_INVITE || kind == NotifKind.N3_LAST_CALL) && canFullScreen(ctx))
-            PrayerCallActivity.pendingIntent(ctx, id, date, prayer, opened?.id) else null
+        // v0.15: কড়া মাত্রা — নামাজের প্রতিটা ডাক পুরো পর্দায়; কোনো বোতাম না চাপা পর্যন্ত সরে না
+        val strong = !isTest && prefs.intensity == Intensity.STRONG && kind != NotifKind.SILENT_REPEAT
+        val callPi = when {
+            strong -> PrayerCallActivity.pendingIntent(ctx, id, date, prayer, opened?.id, strong = true, title = title)
+            home && prefs.fullScreenCall && (kind == NotifKind.N1_INVITE || kind == NotifKind.N3_LAST_CALL) && canFullScreen(ctx) ->
+                PrayerCallActivity.pendingIntent(ctx, id, date, prayer, opened?.id)
+            else -> null
+        }
         val silent = kind == NotifKind.SILENT_REPEAT
         post(
             ctx, id, if (silent) CH_SILENT else CH_PRAYER, title, if (isTest) "টেস্ট: রিমাইন্ডার ঠিকমতো বাজছে ✓" else shortText, bigText, opened, prayer, date, kind,
             home = home, endsAtMillis = window.end.toInstant().toEpochMilli(), fullScreen = callPi,
-            female = female, countdown = home || silent, sticky = silent,
+            contentIntent = if (strong) callPi else null,
+            female = female, countdown = home || silent || strong, sticky = silent || strong,
         )
+        // ফোন চালু অবস্থায় Android পুরো পর্দা না দেখিয়ে ওপরে ছোট করে দেখায় — "অন্য অ্যাপের ওপরে" অনুমতি থাকলে সরাসরি খুলি
+        if (strong && prefs.strongOverlay && canOverlay(ctx)) {
+            runCatching { ctx.startActivity(PrayerCallActivity.callIntent(ctx, date, prayer, opened?.id, strong = true, title = title)) }
+        }
     }
+
+    /** "অন্য অ্যাপের ওপরে দেখানো" অনুমতি */
+    fun canOverlay(ctx: Context): Boolean = android.provider.Settings.canDrawOverlays(ctx)
 
     /** Android 14+ এ পুরো পর্দার ডাকের জন্য আলাদা অনুমতি লাগে (ইউজার সেটিংস থেকে দেন) */
     fun canFullScreen(ctx: Context): Boolean {

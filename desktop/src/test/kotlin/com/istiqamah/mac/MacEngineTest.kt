@@ -130,4 +130,24 @@ class MacEngineTest {
         assertTrue(forWoman?.id == "g")
         assertEquals("l", MacEngine.pickContent(items, NotifKind.N3_LAST_CALL, Prayer.ASR, Gender.MALE, emptyMap(), day)?.id)
     }
+
+    @Test fun strongIsFullScreenFromStartAndRepeats() {
+        val strong = men.copy(intensity = com.istiqamah.app.core.Intensity.STRONG)
+        assertEquals(MacAlert.FULLSCREEN, MacEngine.alertFor(strong, NotifKind.N1_INVITE))
+        assertEquals(MacAlert.FULLSCREEN, MacEngine.alertFor(strong, NotifKind.STRONG_CALL))
+        // মাঝারিতে শেষ সতর্কতা পুরো পর্দা, শুরু কোণের জানালা
+        assertEquals(MacAlert.CALL, MacEngine.alertFor(men, NotifKind.N1_INVITE))
+        val ws = MacEngine.windowsByDate(strong, day, zone)
+        val asr = ws.getValue(day).first { it.prayer == Prayer.ASR }
+        val jam = MacEngine.jamaat(strong, ws).getValue(day to Prayer.ASR).at
+        val plan = MacEngine.plan(strong, asr.start.minusMinutes(1), emptySet())
+        // আসরে জামাতের ৫ মিনিট আগে প্রথম ডাক
+        assertEquals(jam.minusMinutes(5), plan.first { it.prayer == Prayer.ASR && it.kind == NotifKind.N1_INVITE }.fireAt)
+        val first = plan.first { it.prayer == Prayer.ASR && it.kind == NotifKind.STRONG_CALL }
+        // "এখনই যাচ্ছি" — ১২ মিনিট চুপ
+        val quiet = first.fireAt.plusMinutes(12)
+        val after = MacEngine.plan(strong, first.fireAt.minusMinutes(1), emptySet(), mapOf((day to Prayer.ASR) to quiet))
+            .first { it.prayer == Prayer.ASR && it.kind == NotifKind.STRONG_CALL }
+        assertTrue(after.fireAt.isAfter(quiet))
+    }
 }

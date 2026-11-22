@@ -139,7 +139,7 @@ class PlannerTest {
         PlannerInput(d.atStartOfDay(zone), windows, intensity, focus, habit, logged,
             ExtraReminders(LocalTime.of(9, 0), azkar = false, muhasabaAt = null, jumuah = false, weekly = false))
 
-    @Test fun strongGivesFourPerPrayerPlusAyah() {
+    @Test fun strongGivesInviteLossLastAndNextRepeatPerPrayer() {
         val p = Planner.plan(input(Intensity.STRONG))
         assertEquals(5 * 4 + 1, p.size)
         assertTrue(p.zipWithNext().all { (a, b) -> !a.fireAt.isAfter(b.fireAt) })

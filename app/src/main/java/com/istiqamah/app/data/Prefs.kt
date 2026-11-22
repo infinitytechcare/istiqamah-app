@@ -664,8 +664,18 @@ class Prefs(context: Context) {
         get() = sp.getInt("jam_lead", 15)
         set(v) = sp.edit().putInt("jam_lead", v.coerceIn(0, 60)).apply()
 
+    /** v0.15: ওয়াক্ত ধরে জামাতের কত আগে ডাক — আগে এক মান বদলে থাকলে সেটাই সব ওয়াক্তের শুরু */
+    fun jamaatLeadFor(p: Prayer): Int = when {
+        sp.contains("jam_lead_${p.name}") -> sp.getInt("jam_lead_${p.name}", 15)
+        sp.contains("jam_lead") -> sp.getInt("jam_lead", 15)
+        else -> JamaatSettings.DEFAULT_LEADS.getValue(p)
+    }
+
+    fun setJamaatLeadFor(p: Prayer, v: Int) = sp.edit().putInt("jam_lead_${p.name}", v.coerceIn(0, 60)).apply()
+
     val jamaatSettings: JamaatSettings
-        get() = JamaatSettings(jamaatOn, Prayer.entries.associateWith { jamaatRule(it) }, officeDhuhr, officeAsr, jamaatLead)
+        get() = JamaatSettings(jamaatOn, Prayer.entries.associateWith { jamaatRule(it) }, officeDhuhr, officeAsr, jamaatLead,
+            leads = Prayer.entries.associateWith { jamaatLeadFor(it) })
 
     /** (মহিলা) বিরতি শুরুর তারিখ; null = নেই */
     var pausedFrom: LocalDate?
@@ -759,6 +769,19 @@ class Prefs(context: Context) {
 
     fun setWuduUntil(d: LocalDate, p: Prayer, millis: Long) =
         sp.edit().putString("wudu_key", "$d:${p.ordinal}").putLong("wudu_until", millis).apply()
+
+    /** v0.15: কোন ওয়াক্তে কখন পর্যন্ত কড়া ডাক চুপ ("এখনই যাচ্ছি" / "১০ মিনিট পরে") */
+    fun wuduEntry(): Pair<Pair<LocalDate, Prayer>, Long>? {
+        val k = sp.getString("wudu_key", "") ?: return null
+        val d = runCatching { LocalDate.parse(k.substringBefore(':')) }.getOrNull() ?: return null
+        val p = k.substringAfter(':').toIntOrNull()?.takeIf { it in 0..4 }?.let(Prayer::fromOrdinal) ?: return null
+        return (d to p) to sp.getLong("wudu_until", 0L)
+    }
+
+    /** v0.15: কড়া মাত্রায় অন্য অ্যাপের ওপরেও পুরো পর্দা (অনুমতি থাকলে) */
+    var strongOverlay: Boolean
+        get() = sp.getBoolean("strong_overlay", true)
+        set(v) = sp.edit().putBoolean("strong_overlay", v).apply()
 
     /** ঘরের পরিবেশের চেকলিস্টে কোনগুলোতে টিক */
     var homeSetupDone: Set<Int>

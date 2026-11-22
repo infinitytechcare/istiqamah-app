@@ -89,7 +89,7 @@ fun JamaatScreen(vm: AppVm, onBack: () -> Unit) {
         if (p.gender == Gender.MALE) {
             SectionCard {
                 PTitle("জামাতের সময়")
-                PToggle("জামাত ধরে রিমাইন্ডার", "জামাতের ${Bn.num(p.jamaatLead)} মিনিট আগে ডাক, ছুটে গেলে আলাদা ডাক", p.jamaatOn) { p.jamaatOn = it; changed() }
+                PToggle("জামাত ধরে রিমাইন্ডার", "জামাতের প্রস্তুতির সময় আগে থেকে ডাক, ছুটে গেলে আলাদা ডাক", p.jamaatOn) { p.jamaatOn = it; changed() }
                 if (p.jamaatOn) {
                     val ws = Engine.windows(ctx, today)?.associateBy { it.prayer }
                     Prayer.entries.forEach { pr ->
@@ -97,7 +97,9 @@ fun JamaatScreen(vm: AppVm, onBack: () -> Unit) {
                         val t = ws?.get(pr)?.let { r.at(it) }?.let { " · আজ ${Bn.time(it.toLocalTime())}" } ?: ""
                         PItem("${pr.bn}-এর জামাত (মসজিদ)", r.describe(pr) + t) { dialog = "rule:${pr.name}" }
                     }
-                    PItem("রওনা দেওয়ার সময়", "জামাতের ${Bn.num(p.jamaatLead)} মিনিট আগে ডাকবে") { dialog = "lead" }
+                    PItem("রওনা দেওয়ার সময় (জামাতের কত আগে ডাক)", Prayer.entries.joinToString(" · ") { "${it.bn} ${Bn.num(p.jamaatLeadFor(it))}" } + " মিনিট") { dialog = "lead" }
+                    Text("আজকাল ওয়াক্ত শুরুর কিছু পরে আযান হয়, তার ১০–১৫ মিনিট পরে জামাত — জামাতের সময় ঠিক রাখলে ডাকও ঠিক সময়ে আসবে।",
+                        fontSize = 13.sp, color = Muted, lineHeight = 19.sp)
                 }
             }
             Spacer(Modifier.height(12.dp))
@@ -153,8 +155,14 @@ fun JamaatScreen(vm: AppVm, onBack: () -> Unit) {
         d.startsWith("rule:") -> RuleDialog(Prayer.valueOf(d.removePrefix("rule:")), p.jamaatRule(Prayer.valueOf(d.removePrefix("rule:"))), close) { pr, r ->
             p.setJamaatRule(pr, r); changed()
         }
-        d == "lead" -> PChoice("জামাতের কত আগে ডাকবে?", listOf(5, 10, 15, 20, 25, 30).map { "${Bn.num(it)} মিনিট আগে" },
-            listOf(5, 10, 15, 20, 25, 30).indexOf(p.jamaatLead), close) { p.jamaatLead = listOf(5, 10, 15, 20, 25, 30)[it]; changed() }
+        d == "lead" -> PChoice("কোন ওয়াক্তের?", Prayer.entries.map { "${it.bn} — জামাতের ${Bn.num(p.jamaatLeadFor(it))} মিনিট আগে" }, -1,
+            { if (dialog == "lead") dialog = null }) { dialog = "lead:${Prayer.entries[it].name}" }
+        d.startsWith("lead:") -> {
+            val pr = Prayer.valueOf(d.removePrefix("lead:"))
+            val opts = listOf(0, 5, 10, 15, 20, 25, 30, 40)
+            PChoice("${pr.bn}: জামাতের কত আগে ডাকবে?", opts.map { if (it == 0) "জামাতের সময়েই" else "${Bn.num(it)} মিনিট আগে" },
+                opts.indexOf(p.jamaatLeadFor(pr)), close) { p.setJamaatLeadFor(pr, opts[it]); changed() }
+        }
         d == "officeDhuhr" || d == "officeAsr" -> {
             val opts = (if (d == "officeDhuhr") (12 * 4..15 * 4) else (15 * 4..18 * 4)).map { LocalTime.of(it / 4, (it % 4) * 15) }
             val cur = if (d == "officeDhuhr") p.officeDhuhr else p.officeAsr

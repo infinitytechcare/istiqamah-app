@@ -340,7 +340,7 @@ fun SettingsScreen(app: MacApp) {
 
         if (!fromPhone && s.gender == Gender.MALE) {
             Section("জামাত") {
-                SwitchRow("জামাতের সময় ধরে ডাক", "মসজিদের সাধারণ সময় — যোহর ১:৩০, আসর আযানের ২০ মিনিট পর…", s.jamaat.enabled) { on ->
+                SwitchRow("জামাতের সময় ধরে ডাক", "মসজিদের সাধারণ সময় — যোহর ১:৩০, আসর ওয়াক্ত শুরুর ২০ মিনিট পর (আযানের ১০–১৫ মিনিট পর)…", s.jamaat.enabled) { on ->
                     app.update { it.copy(jamaat = it.jamaat.copy(enabled = on)) }
                 }
                 if (s.jamaat.enabled) {
@@ -348,11 +348,19 @@ fun SettingsScreen(app: MacApp) {
                         TimeField("অফিসে যোহর", s.jamaat.officeDhuhr, allowEmpty = true) { t -> app.update { it.copy(jamaat = it.jamaat.copy(officeDhuhr = t)) } }
                         TimeField("অফিসে আসর", s.jamaat.officeAsr, allowEmpty = true) { t -> app.update { it.copy(jamaat = it.jamaat.copy(officeAsr = t)) } }
                     }
-                    Text("জামাতের ${Bn.num(s.jamaat.leadMin)} মিনিট আগে ডাক", style = MaterialTheme.typography.bodyMedium)
-                    Slider(
-                        value = s.jamaat.leadMin.toFloat(), valueRange = 5f..30f, steps = 4,
-                        onValueChange = { v -> app.update { it.copy(jamaat = it.jamaat.copy(leadMin = (Math.round(v / 5f) * 5).coerceIn(5, 30))) } },
-                    )
+                    Text("জামাতের কত আগে ডাক শুরু (ওযু করে রওনা দেওয়ার সময়)", style = MaterialTheme.typography.bodyMedium)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Prayer.entries.forEach { pr ->
+                            val v = s.jamaat.lead(pr)
+                            fun set(x: Int) = app.update { it.copy(jamaat = it.jamaat.copy(leads = Prayer.entries.associateWith { q -> if (q == pr) x else it.jamaat.lead(q) })) }
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(pr.bn, style = MaterialTheme.typography.bodySmall, modifier = Modifier.widthIn(min = 44.dp))
+                                TextButton(onClick = { set((v - 5).coerceAtLeast(0)) }) { Text("−") }
+                                Text("${Bn.num(v)} মি.", style = MaterialTheme.typography.bodyMedium)
+                                TextButton(onClick = { set((v + 5).coerceAtMost(45)) }) { Text("+") }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -436,24 +444,31 @@ fun CallCard(app: MacApp, call: ActiveCall) {
             MarkButtons(app, call, dark = false)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { app.snooze(call) }) { Text("${Bn.num(MacEngine.SNOOZE_MIN)} মিনিট পরে") }
-                TextButton(onClick = { app.dismiss(call) }) { Text("ওযু করতে যাচ্ছি") }
+                TextButton(onClick = { app.goNow(call) }) { Text("এখনই যাচ্ছি") }
             }
         }
     }
 }
 
+/**
+ * পুরো পর্দার ডাক — বন্ধ করার কোনো ✕ নেই; শুধু এই বোতামগুলোর একটা চাপলে সরে:
+ * ১০ মিনিট পরে · এখনই যাচ্ছি · (পুরুষ) জামাতে পড়েছি · পড়েছি (একা) · কাযা পড়েছি
+ */
 @Composable
 fun FullScreenCall(app: MacApp, call: ActiveCall) {
     val r = call.reminder
+    val n = r.notif
+    val p = n.prayer
+    val g = app.settings.gender
     Box(
         Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Emerald800, Emerald900))),
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            Modifier.widthIn(max = 720.dp).verticalScroll(rememberScrollState()).padding(32.dp),
+            Modifier.widthIn(max = 760.dp).verticalScroll(rememberScrollState()).padding(32.dp),
             verticalArrangement = Arrangement.spacedBy(18.dp), horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text("🕌", fontSize = 56.sp)
+            Text("আল্লাহু আকবার", style = MaterialTheme.typography.titleMedium, color = GoldLight)
             Text(r.title, style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.Bold), color = Color.White, textAlign = TextAlign.Center)
             Text(r.body, style = MaterialTheme.typography.titleMedium, color = GoldLight, textAlign = TextAlign.Center)
             call.content?.let {
@@ -461,13 +476,36 @@ fun FullScreenCall(app: MacApp, call: ActiveCall) {
                     ContentBlock(it, dark = true)
                 }
             }
-            MarkButtons(app, call, dark = true)
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedButton(onClick = { app.dismiss(call) }, border = BorderStroke(1.dp, GoldLight)) {
-                    Text("এখনই নামাজে যাচ্ছি", color = Color.White)
+            Spacer(Modifier.height(6.dp))
+            if (p != null) {
+                val big = Modifier.widthIn(min = 230.dp).height(52.dp)
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(
+                        onClick = { app.goNow(call) }, modifier = big,
+                        colors = ButtonDefaults.buttonColors(containerColor = Gold, contentColor = Emerald900),
+                    ) { Text("এখনই যাচ্ছি", style = MaterialTheme.typography.titleMedium) }
+                    OutlinedButton(onClick = { app.snooze(call) }, modifier = big, border = BorderStroke(1.dp, GoldLight)) {
+                        Text("${Bn.num(MacEngine.SNOOZE_MIN)} মিনিট পরে", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                    }
                 }
-                TextButton(onClick = { app.snooze(call) }) { Text("${Bn.num(MacEngine.SNOOZE_MIN)} মিনিট পরে", color = Color.White.copy(alpha = 0.7f)) }
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    val done = buildList {
+                        if (g != Gender.FEMALE) add(PrayerStatus.JAMAAH to "জামাতে পড়েছি")
+                        add(PrayerStatus.ALONE to if (g == Gender.FEMALE) "পড়েছি" else "পড়েছি (একা)")
+                        add(PrayerStatus.QAZA to "কাযা পড়েছি")
+                    }
+                    for ((st, label) in done) {
+                        OutlinedButton(
+                            onClick = { app.mark(n.date, p, st) },
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.5f)),
+                        ) { Text(label, color = Color.White) }
+                    }
+                }
             }
+            Text(
+                "একটা বোতাম না চাপা পর্যন্ত এই পর্দা সরবে না।",
+                style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.55f),
+            )
         }
     }
 }

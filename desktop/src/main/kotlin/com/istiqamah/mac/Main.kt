@@ -4,11 +4,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.isMetaPressed
+import androidx.compose.ui.input.key.key
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
@@ -50,6 +54,15 @@ fun main() {
 @Composable
 private fun ApplicationScope.IstiqamahMac() {
     val app = remember { MacApp() }
+
+    // পুরো পর্দার ডাক খোলা থাকলে Cmd+Q / ডক থেকে Quit কাজ করে না
+    LaunchedEffect(Unit) {
+        runCatching {
+            Desktop.getDesktop().setQuitHandler { _, response ->
+                if (app.blocking) response.cancelQuit() else response.performQuit()
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         System.getenv("ISTIQAMAH_DEMO")?.let { delay(1500); app.demo(it) }
@@ -98,7 +111,7 @@ private fun ApplicationScope.IstiqamahMac() {
             Item("সেটিংস…", onClick = { app.showSettings = true })
             Item(if (app.pair.paired) "ফোন: ${app.pair.phoneName ?: "জোড়া লাগানো"} ✓" else "ফোনের সাথে সিঙ্ক…", onClick = { app.showPair = true })
             Separator()
-            Item("বন্ধ করুন", onClick = { exitApplication() })
+            Item("বন্ধ করুন", enabled = !app.blocking, onClick = { exitApplication() })
         },
     )
 
@@ -141,15 +154,28 @@ private fun ApplicationScope.IstiqamahMac() {
 
     app.fullScreen?.let { call ->
         key(call.id) {
-            val b = remember { GraphicsEnvironment.getLocalGraphicsEnvironment().maximumWindowBounds }
+            val device = remember { GraphicsEnvironment.getLocalGraphicsEnvironment().defaultScreenDevice }
+            val b = remember { device.defaultConfiguration.bounds }
             Window(
-                onCloseRequest = { app.dismiss(call) }, title = "ইস্তিকামাহ",
+                // ✕/Cmd+W দিয়ে বন্ধ হয় না — একটা বোতাম বেছে নিতে হয়
+                onCloseRequest = {}, title = "ইস্তিকামাহ",
                 undecorated = true, alwaysOnTop = true, resizable = false,
                 state = remember {
                     WindowState(position = WindowPosition(b.x.dp, b.y.dp), size = DpSize(b.width.dp, b.height.dp))
                 },
+                onPreviewKeyEvent = { e ->
+                    // Esc, Cmd+W, Cmd+Q, Cmd+H, Cmd+M — কিছুই এই পর্দা সরায় না
+                    e.key == Key.Escape || (e.isMetaPressed && (e.key == Key.W || e.key == Key.Q || e.key == Key.H || e.key == Key.M))
+                },
             ) {
-                LaunchedEffect(Unit) { bringToFront() }
+                LaunchedEffect(Unit) {
+                    // মেনু বার আর ডকসহ পুরো পর্দা
+                    runCatching { device.fullScreenWindow = window }
+                    bringToFront()
+                }
+                DisposableEffect(Unit) {
+                    onDispose { runCatching { if (device.fullScreenWindow == window) device.fullScreenWindow = null } }
+                }
                 MacTheme { FullScreenCall(app, call) }
             }
         }

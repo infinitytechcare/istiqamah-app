@@ -85,13 +85,18 @@ object MacEngine {
         Jamaat.times(windows, s.gender, s.jamaat, s.work)
 
     /** ফোনের একই পরিকল্পনা — শুধু নামাজের ডাক (ম্যাকে অন্য রিমাইন্ডার নয়) */
-    fun plan(s: MacSettings, now: ZonedDateTime, logged: Set<Pair<LocalDate, Prayer>>): List<PlannedNotif> {
+    fun plan(
+        s: MacSettings, now: ZonedDateTime, logged: Set<Pair<LocalDate, Prayer>>,
+        going: Map<Pair<LocalDate, Prayer>, ZonedDateTime> = emptyMap(),
+    ): List<PlannedNotif> {
         val ws = windowsByDate(s, now.toLocalDate(), now.zone)
         val input = PlannerInput(
             now = now, windowsByDate = ws, intensity = s.intensity,
             focus = Prayer.entries.toSet(), habitFormed = emptySet(), logged = logged,
             extras = ExtraReminders(dailyAyahAt = null, azkar = false, muhasabaAt = null, jumuah = false, weekly = false),
             jamaat = jamaat(s, ws), leadMin = s.jamaat.leadMin.toLong(),
+            leads = Prayer.entries.associateWith { s.jamaat.lead(it).toLong() },
+            goingUntil = going,
             pausedFrom = s.pausedFrom.takeIf { s.gender == Gender.FEMALE },
         )
         return Planner.plan(input).filter { it.kind.isPrayer && it.prayer != null && it.kind != NotifKind.SILENT_REPEAT }
@@ -101,12 +106,24 @@ object MacEngine {
      * (from, to] সময়ের মধ্যে যে ডাকগুলো বাজার কথা — ঘুম থেকে জাগলে পুরনো ডাকের ঢল নয়:
      * [STALE_MIN]-এর বেশি পুরনো বাদ, আর একই ওয়াক্তের একাধিক থাকলে শুধু শেষেরটা।
      */
-    fun due(s: MacSettings, from: ZonedDateTime, to: ZonedDateTime, logged: Set<Pair<LocalDate, Prayer>>): List<PlannedNotif> {
-        val fresh = plan(s, from, logged).filter { !it.fireAt.isAfter(to) && it.fireAt.isAfter(to.minusMinutes(STALE_MIN)) }
+    fun due(
+        s: MacSettings, from: ZonedDateTime, to: ZonedDateTime, logged: Set<Pair<LocalDate, Prayer>>,
+        going: Map<Pair<LocalDate, Prayer>, ZonedDateTime> = emptyMap(),
+    ): List<PlannedNotif> {
+        val fresh = plan(s, from, logged, going).filter { !it.fireAt.isAfter(to) && it.fireAt.isAfter(to.minusMinutes(STALE_MIN)) }
         return fresh.groupBy { it.date to it.prayer }.values.map { l -> l.maxBy { it.fireAt } }.sortedBy { it.fireAt }
     }
 
-    fun alertFor(s: MacSettings, kind: NotifKind): MacAlert = when (kind) {
+    /** "এখনই যাচ্ছি" চাপার পর কতক্ষণ চুপ, তারপর একবার খোঁজ */
+    const val GOING_MIN = 12L
+
+    fun alertFor(s: MacSettings, kind: NotifKind): MacAlert = when {
+        // কড়া মাত্রা: নামাজের সব ডাক পুরো পর্দায়
+        s.intensity == Intensity.STRONG && kind.isPrayer -> MacAlert.FULLSCREEN
+        else -> alertForKind(s, kind)
+    }
+
+    private fun alertForKind(s: MacSettings, kind: NotifKind): MacAlert = when (kind) {
         NotifKind.N3_LAST_CALL -> if (s.fullScreenLast) MacAlert.FULLSCREEN else if (s.callWindow) MacAlert.CALL else MacAlert.BANNER
         NotifKind.N1_INVITE, NotifKind.HOME_NUDGE_3 -> if (s.callWindow) MacAlert.CALL else MacAlert.BANNER
         else -> MacAlert.BANNER
@@ -125,6 +142,10 @@ object MacEngine {
             NotifKind.N2_VIRTUE -> "${p.bn} — এখনো সময় আছে" to "আউয়াল ওয়াক্তে পড়ার সুযোগটা হাতছাড়া করবেন না। $end"
             NotifKind.JAMAAT_MISSED -> "${p.bn}ের জামাত শুরু হয়ে গেছে" to "জামাত ছুটলেও নামাজ ছুটতে দেবেন না — এখনই পড়ে নিন। $end"
             NotifKind.N3_LAST_CALL -> "${p.bn}ের ওয়াক্ত শেষ হতে ২০ মিনিট" to "এখনই না পড়লে কাযা হয়ে যাবে। দরজা এখনো খোলা — উঠে পড়ুন।"
+            NotifKind.STRONG_CALL ->
+                if (j != null && n.fireAt.isBefore(j.at)) "${p.bn}ের জামাত ${Bn.time(j.at.toLocalTime())}" to "কাজ রাখুন, ওযু করে রওনা দিন। $end"
+                else "${p.bn} এখনো পড়া হয়নি" to "কাজ একটু থামান — আগে আল্লাহর ডাক। $end"
+            NotifKind.WUDU_CHECK -> "ওযু হয়েছে? এবার জায়নামাজে দাঁড়ান" to "\"আল্লাহু আকবার\" বলে শুরু করুন — বাকিটা আপনা-আপনি হবে। $end"
             else -> "${p.bn} — মনে করিয়ে দিচ্ছি" to "নামাজের সময় চলছে। $end"
         }
         return MacReminder(n, alertFor(s, n.kind), title, body.trim())

@@ -17,6 +17,7 @@ import com.istiqamah.app.core.NotifKind
 import com.istiqamah.app.core.PlannedNotif
 import com.istiqamah.app.core.Planner
 import com.istiqamah.app.core.PlannerInput
+import com.istiqamah.app.core.Intensity
 import com.istiqamah.app.core.Prayer
 import com.istiqamah.app.core.PrayerStatus
 import com.istiqamah.app.core.PrayerTimesCalculator
@@ -139,6 +140,10 @@ object Engine {
                 home = Situation.homePrayers(windowsByDate, prefs.homeMode),
                 jamaat = Jamaat.times(windowsByDate, prefs.gender, prefs.jamaatSettings, prefs.homeMode.schedule),
                 leadMin = prefs.jamaatLead.toLong(),
+                leads = Prayer.entries.associateWith { prefs.jamaatLeadFor(it).toLong() },
+                goingUntil = prefs.wuduEntry()?.let { (k, ms) ->
+                    mapOf(k to java.time.Instant.ofEpochMilli(ms).atZone(now.zone))
+                } ?: emptyMap(),
                 pausedFrom = prefs.pausedFrom,
                 silentRepeat = prefs.silentRepeat,
                 quranDone = prefs.quranDoneDates,
@@ -169,9 +174,15 @@ object Engine {
     /** ১০ মিনিট পরে আবার মনে করানো */
     fun snooze(ctx: Context, date: LocalDate, prayer: Prayer, kind: NotifKind, minutes: Long = 10) {
         val am = ctx.getSystemService(AlarmManager::class.java) ?: return
+        // কড়া মাত্রা: "১০ মিনিট পরে" মানে এই ১০ মিনিট নাছোড় ডাকও চুপ
+        if (kind.isPrayer && kind != NotifKind.WUDU_CHECK && Prefs(ctx).intensity == Intensity.STRONG) {
+            Prefs(ctx).setWuduUntil(date, prayer, System.currentTimeMillis() + minutes * 60_000)
+            Notifier.cancelFor(ctx, date, prayer)
+        }
         val p = PlannedNotif(date, prayer, kind, now(ctx).plusMinutes(minutes))
         val rc = SNOOZE_OFFSET + p.id
         setAlarm(ctx, am, rc, p.fireAt.toInstant().toEpochMilli(), alarmIntent(ctx, p, rc))
+        if (kind.isPrayer && kind != NotifKind.WUDU_CHECK && Prefs(ctx).intensity == Intensity.STRONG) reschedule(ctx)
     }
 
     fun cancelSnooze(ctx: Context, date: LocalDate, prayer: Prayer) {
@@ -346,6 +357,8 @@ object Engine {
         // এর মধ্যে নাছোড় ডাক এলে বিরক্ত লাগবে — ১২ মিনিট চুপ
         Prefs(ctx).setWuduUntil(date, prayer, System.currentTimeMillis() + Situation.WUDU_CHECK_MIN * 60_000)
         snooze(ctx, date, prayer, NotifKind.WUDU_CHECK, Situation.WUDU_CHECK_MIN)
+        // কড়া মাত্রার পরের ডাক চুপ থাকার পরে বসুক
+        if (Prefs(ctx).intensity == Intensity.STRONG) reschedule(ctx)
     }
 
     fun setDayOverride(ctx: Context, date: LocalDate, o: DayOverride) {

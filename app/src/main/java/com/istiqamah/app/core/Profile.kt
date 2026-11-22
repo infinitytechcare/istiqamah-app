@@ -66,10 +66,13 @@ data class JamaatSettings(
     /** অফিসে আলাদা জামাত (অফিসের সময়ের ভেতরে পড়লে এটাই ধরা হয়) */
     val officeDhuhr: LocalTime? = LocalTime.of(13, 15),
     val officeAsr: LocalTime? = null,
-    /** জামাতের কত মিনিট আগে ডাক — ওযু করে রওনা দেওয়ার সময় */
+    /** জামাতের কত মিনিট আগে ডাক — ওযু করে রওনা দেওয়ার সময় (পুরনো, সব ওয়াক্তে এক; [leads] না থাকলে) */
     val leadMin: Int = 15,
+    /** v0.15: ওয়াক্ত ধরে আলাদা — আসরে অল্প, ফজরে/যোহরে বেশি */
+    val leads: Map<Prayer, Int> = DEFAULT_LEADS,
 ) {
     fun rule(p: Prayer): JamaatRule = rules[p] ?: DEFAULT_RULES.getValue(p)
+    fun lead(p: Prayer): Int = leads[p] ?: leadMin
 
     companion object {
         val DEFAULT_RULES = mapOf(
@@ -78,6 +81,18 @@ data class JamaatSettings(
             Prayer.ASR to JamaatRule(JamaatMode.AFTER_START, 20),
             Prayer.MAGHRIB to JamaatRule(JamaatMode.AFTER_START, 5),
             Prayer.ISHA to JamaatRule(JamaatMode.AFTER_START, 30),
+        )
+
+        /**
+         * জামাতের কত আগে ডাক শুরু। আজকাল ওয়াক্ত শুরুর কিছু পরে আযান, তার ১০–১৫ মিনিট পরে জামাত —
+         * তাই জামাতের সময় ধরেই হিসাব; প্রস্তুতির সময় ওয়াক্ত ভেদে আলাদা।
+         */
+        val DEFAULT_LEADS = mapOf(
+            Prayer.FAJR to 20,
+            Prayer.DHUHR to 15,
+            Prayer.ASR to 5,
+            Prayer.MAGHRIB to 10,
+            Prayer.ISHA to 15,
         )
     }
 }

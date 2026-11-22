@@ -59,6 +59,8 @@ class MacApp(private val store: MacStore = MacStore()) {
     private val seen = HashMap<String, LocalDate>()
     private val fired = HashSet<String>()
     private val snoozed = ArrayList<Pair<ZonedDateTime, PlannedNotif>>()
+    /** "এখনই যাচ্ছি" / "১০ মিনিট পরে"-র পর এই সময় পর্যন্ত কড়া ডাক চুপ */
+    private val going = HashMap<Pair<LocalDate, Prayer>, ZonedDateTime>()
     private var lastTick: ZonedDateTime? = null
     private var nextId = 1L
 
@@ -142,7 +144,8 @@ class MacApp(private val store: MacStore = MacStore()) {
         lastTick = t
         refresh(t)
         val logged = logged
-        for (n in MacEngine.due(settings, from, t, logged)) {
+        going.entries.removeIf { it.value.isBefore(t.minusHours(6)) }
+        for (n in MacEngine.due(settings, from, t, logged, going)) {
             val key = "${n.date}|${n.prayer}|${n.kind}"
             if (fired.add(key)) fire(n)
         }
@@ -183,8 +186,24 @@ class MacApp(private val store: MacStore = MacStore()) {
 
     fun snooze(c: ActiveCall) {
         dismiss(c)
-        snoozed.add(ZonedDateTime.now().plusMinutes(MacEngine.SNOOZE_MIN) to c.reminder.notif)
+        val n = c.reminder.notif
+        val at = ZonedDateTime.now().plusMinutes(MacEngine.SNOOZE_MIN)
+        n.prayer?.let { going[n.date to it] = at }
+        snoozed.add(at to n)
     }
+
+    /** "এখনই যাচ্ছি": ১২ মিনিট চুপ, তারপর একবার খোঁজ — "পড়েছেন?" */
+    fun goNow(c: ActiveCall) {
+        dismiss(c)
+        val n = c.reminder.notif
+        val p = n.prayer ?: return
+        val at = ZonedDateTime.now().plusMinutes(MacEngine.GOING_MIN)
+        going[n.date to p] = at
+        snoozed.add(at to PlannedNotif(n.date, p, com.istiqamah.app.core.NotifKind.WUDU_CHECK, at))
+    }
+
+    /** পুরো পর্দা খোলা থাকলে অ্যাপ বন্ধ করা যায় না — আগে একটা বোতাম বেছে নিতে হয় */
+    val blocking: Boolean get() = fullScreen != null
 
     /** চিহ্ন দেওয়া (status = null হলে মুছে ফেলা) */
     fun mark(date: LocalDate, prayer: Prayer, status: PrayerStatus?) {

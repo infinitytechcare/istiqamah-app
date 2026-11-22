@@ -136,6 +136,26 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> U
             SectionCard {
                 Title("রিমাইন্ডার")
                 Item("তীব্রতা", "${p.intensity.bn} — ${p.intensity.desc}") { dialog = "intensity" }
+                if (p.intensity == Intensity.STRONG) {
+                    val ctx = LocalContext.current
+                    Text(
+                        "কড়া মাত্রায় প্রতিটা ডাক পুরো পর্দায় আসে, আর \"এখনই যাচ্ছি\", \"১০ মিনিট পরে\" বা \"পড়েছি\" না চাপা পর্যন্ত সরে না। " +
+                            "লক স্ক্রিনে সবসময় পুরো পর্দা; ফোন হাতে চালু থাকলে নিচের অনুমতি দিলে তখনও পুরো পর্দা।",
+                        fontSize = 13.sp, color = Muted, lineHeight = 19.sp,
+                    )
+                    if (Build.VERSION.SDK_INT >= 34 && !com.istiqamah.app.notify.Notifier.canFullScreen(ctx)) {
+                        OutlinedButton(onClick = {
+                            runCatching { ctx.startActivity(Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, Uri.parse("package:${ctx.packageName}"))) }
+                        }, modifier = Modifier.padding(top = 6.dp)) { Text("লক স্ক্রিনে পুরো পর্দার অনুমতি দিন", color = Emerald800) }
+                    }
+                    if (!com.istiqamah.app.notify.Notifier.canOverlay(ctx)) {
+                        OutlinedButton(onClick = {
+                            runCatching { ctx.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${ctx.packageName}"))) }
+                        }, modifier = Modifier.padding(top = 6.dp)) { Text("অন্য অ্যাপের ওপরে দেখানোর অনুমতি দিন", color = Emerald800) }
+                    } else {
+                        Text("✓ অন্য অ্যাপের ওপরেও পুরো পর্দা দেখাবে", fontSize = 13.sp, color = Emerald700, modifier = Modifier.padding(top = 4.dp))
+                    }
+                }
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 8.dp)) {
                     Column(Modifier.weight(1f)) {
                         Text("দৈনিক আয়াত", fontSize = 17.sp, color = Ink)

@@ -42,7 +42,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 }
                 Notifier.showFor(ctx, kind, p, date, isTest = intent.getBooleanExtra(Engine.EXTRA_TEST, false))
                 // নীরব রিমাইন্ডার: পরেরটা বসাতে পুরো হিসাব আবার
-                if (kind == NotifKind.SILENT_REPEAT) Engine.reschedule(ctx)
+                if (kind == NotifKind.SILENT_REPEAT || kind == NotifKind.STRONG_CALL) Engine.reschedule(ctx)
                 // ওয়াক্ত শুরু হলে উইজেটে "এখন …" দেখাই
                 if (kind.isPrayer) PrayerWidget.updateAll(ctx)
             }
