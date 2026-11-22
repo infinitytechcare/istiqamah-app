@@ -50,11 +50,13 @@ jobs:
           ls -la shots
           tail -n 30 shots/*.log
 
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: shots
-          path: shots
+      - name: Screenshots for review (mac branch only)
+        if: github.ref == 'refs/heads/mac'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view mac-ci-shots >/dev/null 2>&1 || gh release create mac-ci-shots --title "CI screenshots (temporary)" --notes "temporary" --prerelease --target "$GITHUB_SHA"
+          gh release upload mac-ci-shots shots/*.png --clobber
 
       - name: Ad-hoc sign + DMG
         run: |
