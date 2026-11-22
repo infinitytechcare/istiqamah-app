@@ -1,0 +1,151 @@
+package com.istiqamah.mac
+
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import com.istiqamah.app.core.ContentItem
+import com.istiqamah.app.core.ContentPicker
+import com.istiqamah.app.core.DayLog
+import com.istiqamah.app.core.JamaatTime
+import com.istiqamah.app.core.LogEvent
+import com.istiqamah.app.core.PlannedNotif
+import com.istiqamah.app.core.Prayer
+import com.istiqamah.app.core.PrayerStatus
+import com.istiqamah.app.core.PrayerWindow
+import com.istiqamah.app.core.SyncLog
+import java.time.LocalDate
+import java.time.ZonedDateTime
+
+/** পর্দায় দেখানো একটা ডাক */
+data class ActiveCall(val id: Long, val reminder: MacReminder, val content: ContentItem?)
+
+/**
+ * ম্যাক অ্যাপের পুরো অবস্থা: সেটিংস, চিহ্ন, চলমান ডাক।
+ * প্রতি ১৫ সেকেন্ডে [tick] — কোন ডাক বাজার সময় হলো দেখে।
+ */
+class MacApp(private val store: MacStore = MacStore()) {
+    var settings by mutableStateOf(store.loadSettings()); private set
+    private var events: List<LogEvent> = store.loadEvents()
+    var logs by mutableStateOf(SyncLog.dayLogs(events)); private set
+    var windows by mutableStateOf<Map<LocalDate, List<PrayerWindow>>>(emptyMap()); private set
+    var jamaat by mutableStateOf<Map<Pair<LocalDate, Prayer>, JamaatTime>>(emptyMap()); private set
+    var summary by mutableStateOf(""); private set
+    var now by mutableStateOf(ZonedDateTime.now()); private set
+    /** এখন চলমান ওয়াক্ত চিহ্নহীন — মেনু বারের আইকনে ছোট বিন্দু */
+    var pending by mutableStateOf(false); private set
+
+    var showToday by mutableStateOf(false)
+    var showSettings by mutableStateOf(false)
+    val calls = mutableStateListOf<ActiveCall>()
+    var fullScreen by mutableStateOf<ActiveCall?>(null)
+
+    val content: List<ContentItem> = runCatching {
+        MacApp::class.java.classLoader.getResourceAsStream("content.json")!!.bufferedReader(Charsets.UTF_8).use { MacStore.parseContent(it.readText()) }
+    }.getOrDefault(emptyList())
+
+    private val seen = HashMap<String, LocalDate>()
+    private val fired = HashSet<String>()
+    private val snoozed = ArrayList<Pair<ZonedDateTime, PlannedNotif>>()
+    private var lastTick: ZonedDateTime? = null
+    private var nextId = 1L
+
+    val logged: Set<Pair<LocalDate, Prayer>>
+        get() = logs.values.flatMap { l -> l.statuses.keys.map { l.date to it } }.toSet()
+
+    init {
+        MacSystem.setLaunchAtLogin(settings.launchAtLogin)
+        refresh(ZonedDateTime.now())
+    }
+
+    private fun refresh(t: ZonedDateTime) {
+        now = t
+        windows = MacEngine.windowsByDate(settings, t.toLocalDate(), t.zone)
+        jamaat = MacEngine.jamaat(settings, windows)
+        summary = MacEngine.summary(windows, t, logged)
+        val cur = MacEngine.current(windows, t)
+        pending = cur != null && (cur.start.toLocalDate() to cur.prayer) !in logged &&
+            !(settings.pausedFrom != null && settings.gender == com.istiqamah.app.core.Gender.FEMALE)
+    }
+
+    fun tick(t: ZonedDateTime = ZonedDateTime.now()) {
+        val from = lastTick ?: t.minusSeconds(30)
+        lastTick = t
+        refresh(t)
+        val logged = logged
+        for (n in MacEngine.due(settings, from, t, logged)) {
+            val key = "${n.date}|${n.prayer}|${n.kind}"
+            if (fired.add(key)) fire(n)
+        }
+        // "১০ মিনিট পরে" — সময় হলে আবার, তবে ততক্ষণে পড়া হয়ে গেলে নয়
+        val ready = snoozed.filter { !it.first.isAfter(t) }
+        snoozed.removeAll(ready.toSet())
+        ready.map { it.second }.filter { (it.date to it.prayer) !in logged }.forEach { fire(it, forceCall = true) }
+        if (fired.size > 500) fired.clear()
+    }
+
+    private fun fire(n: PlannedNotif, forceCall: Boolean = false) {
+        val p = n.prayer ?: return
+        val r = MacEngine.reminder(settings, n, windows, jamaat).let {
+            if (forceCall && it.alert == MacAlert.BANNER) it.copy(alert = MacAlert.CALL) else it
+        }
+        val today = now.toLocalDate()
+        val item = MacEngine.pickContent(content, n.kind, p, settings.gender, seen, today, salt = today.dayOfYear + p.ordinal)
+        item?.let { seen[it.id] = today }
+        when (r.alert) {
+            MacAlert.BANNER -> MacSystem.banner(r.title, item?.shortBn?.let { "$it — ${item.refBn}" } ?: r.body, settings.sound)
+            MacAlert.CALL -> {
+                calls.removeAll { it.reminder.notif.date == n.date && it.reminder.notif.prayer == p }
+                calls.add(ActiveCall(nextId++, r, item))
+                if (settings.sound) MacSystem.chime()
+            }
+            MacAlert.FULLSCREEN -> {
+                calls.removeAll { it.reminder.notif.date == n.date && it.reminder.notif.prayer == p }
+                fullScreen = ActiveCall(nextId++, r, item)
+                if (settings.sound) MacSystem.chime(strong = true)
+            }
+        }
+    }
+
+    fun dismiss(c: ActiveCall) {
+        calls.removeAll { it.id == c.id }
+        if (fullScreen?.id == c.id) fullScreen = null
+    }
+
+    fun snooze(c: ActiveCall) {
+        dismiss(c)
+        snoozed.add(ZonedDateTime.now().plusMinutes(MacEngine.SNOOZE_MIN) to c.reminder.notif)
+    }
+
+    /** চিহ্ন দেওয়া (status = null হলে মুছে ফেলা) */
+    fun mark(date: LocalDate, prayer: Prayer, status: PrayerStatus?) {
+        events = events + LogEvent(date, prayer, status, System.currentTimeMillis(), MacStore.DEVICE)
+        runCatching { store.saveEvents(events) }
+        events = SyncLog.compact(events)
+        logs = SyncLog.dayLogs(events)
+        if (status != null) {
+            calls.removeAll { it.reminder.notif.date == date && it.reminder.notif.prayer == prayer }
+            if (fullScreen?.reminder?.notif?.let { it.date == date && it.prayer == prayer } == true) fullScreen = null
+            snoozed.removeAll { it.second.date == date && it.second.prayer == prayer }
+        }
+        refresh(ZonedDateTime.now())
+    }
+
+    fun status(date: LocalDate, prayer: Prayer): PrayerStatus? = logs[date]?.status(prayer)
+
+    fun update(f: (MacSettings) -> MacSettings) {
+        val old = settings
+        settings = f(settings)
+        runCatching { store.saveSettings(settings) }
+        if (old.launchAtLogin != settings.launchAtLogin) MacSystem.setLaunchAtLogin(settings.launchAtLogin)
+        refresh(ZonedDateTime.now())
+    }
+
+    /** আজকের আয়াত/হাদিস — ফোনের "daily" ট্যাগ থেকে */
+    val daily: ContentItem? by lazy {
+        val pool = content.filter { settings.gender.allows(it.tags) }
+        ContentPicker.pick(pool, "daily", emptyMap(), LocalDate.now())
+    }
+
+    fun todayLog(): DayLog? = logs[now.toLocalDate()]
+}

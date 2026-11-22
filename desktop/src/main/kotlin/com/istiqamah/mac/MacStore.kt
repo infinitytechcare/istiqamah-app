@@ -1,0 +1,164 @@
+package com.istiqamah.mac
+
+import com.istiqamah.app.core.AsrMadhab
+import com.istiqamah.app.core.CalcMethod
+import com.istiqamah.app.core.ContentItem
+import com.istiqamah.app.core.Gender
+import com.istiqamah.app.core.Intensity
+import com.istiqamah.app.core.JamaatSettings
+import com.istiqamah.app.core.LogEvent
+import com.istiqamah.app.core.Prayer
+import com.istiqamah.app.core.PrayerStatus
+import com.istiqamah.app.core.QuranScript
+import com.istiqamah.app.core.SyncLog
+import com.istiqamah.app.core.WorkSchedule
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.time.DayOfWeek
+import java.time.LocalDate
+import java.time.LocalTime
+
+// =====================================================================
+// ম্যাকের সংরক্ষণ: ~/Library/Application Support/Istiqamah
+//   settings.json — শহর, হিসাব, জামাত, অফিস
+//   events.json   — নামাজের চিহ্নগুলো (SyncLog-এর ঘটনা, ফোনের সাথে মেলানোর জন্য প্রস্তুত)
+// এখানে কখনো গুনাহ, যাকাত, দেনা বা ওসিয়তের কিছু থাকে না।
+// =====================================================================
+
+class MacStore(private val dir: File = defaultDir()) {
+    private val settingsFile = File(dir, "settings.json")
+    private val eventsFile = File(dir, "events.json")
+
+    init { dir.mkdirs() }
+
+    fun loadSettings(): MacSettings = runCatching { parseSettings(JSONObject(settingsFile.readText())) }.getOrDefault(MacSettings())
+
+    fun saveSettings(s: MacSettings) = atomicWrite(settingsFile, settingsJson(s).toString(2))
+
+    fun loadEvents(): List<LogEvent> = runCatching {
+        val a = JSONArray(eventsFile.readText())
+        (0 until a.length()).mapNotNull { parseEvent(a.getJSONObject(it)) }
+    }.getOrDefault(emptyList())
+
+    fun saveEvents(events: List<LogEvent>) {
+        // ৪০০ দিনের বেশি পুরনো ঘটনা রাখি না; বাকিগুলোর প্রতিটি ওয়াক্তের শুধু শেষ ঘটনা
+        val cutoff = LocalDate.now().minusDays(400)
+        val keep = SyncLog.compact(events.filter { !it.date.isBefore(cutoff) })
+        atomicWrite(eventsFile, JSONArray(keep.map { eventJson(it) }).toString())
+    }
+
+    private fun atomicWrite(f: File, text: String) {
+        val tmp = File(f.parentFile, f.name + ".tmp")
+        tmp.writeText(text)
+        if (!tmp.renameTo(f)) { f.writeText(text); tmp.delete() }
+    }
+
+    companion object {
+        const val DEVICE = "mac"
+
+        fun defaultDir(): File {
+            val home = System.getProperty("user.home")
+            val mac = File(home, "Library/Application Support")
+            return if (mac.isDirectory) File(mac, "Istiqamah") else File(home, ".istiqamah")
+        }
+
+        // ---------- ঘটনা ----------
+        fun eventJson(e: LogEvent) = JSONObject()
+            .put("d", e.date.toString()).put("p", e.prayer.ordinal)
+            .put("s", e.status?.code ?: 0).put("ts", e.ts).put("dev", e.device)
+
+        fun parseEvent(o: JSONObject): LogEvent? = runCatching {
+            val p = o.getInt("p")
+            if (p !in Prayer.entries.indices) return null
+            LogEvent(
+                date = LocalDate.parse(o.getString("d")),
+                prayer = Prayer.fromOrdinal(p),
+                status = PrayerStatus.fromCode(o.optInt("s", 0)),
+                ts = o.getLong("ts"),
+                device = o.optString("dev", DEVICE),
+            )
+        }.getOrNull()
+
+        // ---------- সেটিংস ----------
+        private fun t(x: LocalTime?) = x?.toString() ?: JSONObject.NULL
+
+        fun settingsJson(s: MacSettings) = JSONObject()
+            .put("v", 1)
+            .put("city", s.city).put("lat", s.lat).put("lng", s.lng)
+            .put("method", s.method.name).put("madhab", s.madhab.name)
+            .put("adjust", JSONArray(s.adjust))
+            .put("gender", s.gender.code)
+            .put("intensity", s.intensity.code)
+            .put("jamaat", JSONObject()
+                .put("enabled", s.jamaat.enabled)
+                .put("officeDhuhr", t(s.jamaat.officeDhuhr))
+                .put("officeAsr", t(s.jamaat.officeAsr))
+                .put("leadMin", s.jamaat.leadMin))
+            .put("work", JSONObject()
+                .put("enabled", s.work.enabled)
+                .put("days", JSONArray(s.work.days.map { it.value }.sorted()))
+                .put("start", s.work.start.toString()).put("end", s.work.end.toString()))
+            .put("callWindow", s.callWindow).put("fullScreenLast", s.fullScreenLast)
+            .put("sound", s.sound).put("launchAtLogin", s.launchAtLogin)
+            .put("pausedFrom", s.pausedFrom?.toString() ?: JSONObject.NULL)
+
+        private fun JSONObject.time(k: String, def: LocalTime?): LocalTime? =
+            if (!has(k)) def else if (isNull(k)) null else runCatching { LocalTime.parse(getString(k)) }.getOrDefault(def)
+
+        fun parseSettings(o: JSONObject): MacSettings {
+            val d = MacSettings()
+            val adj = o.optJSONArray("adjust")?.let { a -> (0 until a.length()).map { a.optInt(it).coerceIn(-30, 30) } }
+                ?.takeIf { it.size == 5 } ?: d.adjust
+            val j = o.optJSONObject("jamaat")
+            val w = o.optJSONObject("work")
+            return d.copy(
+                city = o.optString("city", d.city),
+                lat = o.optDouble("lat", d.lat).takeIf { it in -90.0..90.0 } ?: d.lat,
+                lng = o.optDouble("lng", d.lng).takeIf { it in -180.0..180.0 } ?: d.lng,
+                method = runCatching { CalcMethod.valueOf(o.getString("method")) }.getOrDefault(d.method),
+                madhab = runCatching { AsrMadhab.valueOf(o.getString("madhab")) }.getOrDefault(d.madhab),
+                adjust = adj,
+                gender = Gender.entries.firstOrNull { it.code == o.optInt("gender", 0) } ?: Gender.UNSET,
+                intensity = Intensity.fromCode(o.optInt("intensity", d.intensity.code)),
+                jamaat = if (j == null) d.jamaat else JamaatSettings(
+                    enabled = j.optBoolean("enabled", true),
+                    officeDhuhr = j.time("officeDhuhr", d.jamaat.officeDhuhr),
+                    officeAsr = j.time("officeAsr", d.jamaat.officeAsr),
+                    leadMin = j.optInt("leadMin", 15).coerceIn(5, 45),
+                ),
+                work = if (w == null) d.work else WorkSchedule(
+                    enabled = w.optBoolean("enabled", true),
+                    days = w.optJSONArray("days")?.let { a -> (0 until a.length()).mapNotNull { i -> runCatching { DayOfWeek.of(a.getInt(i)) }.getOrNull() }.toSet() } ?: d.work.days,
+                    start = w.time("start", d.work.start) ?: d.work.start,
+                    end = w.time("end", d.work.end) ?: d.work.end,
+                ),
+                callWindow = o.optBoolean("callWindow", d.callWindow),
+                fullScreenLast = o.optBoolean("fullScreenLast", d.fullScreenLast),
+                sound = o.optBoolean("sound", d.sound),
+                launchAtLogin = o.optBoolean("launchAtLogin", d.launchAtLogin),
+                pausedFrom = if (o.isNull("pausedFrom") || !o.has("pausedFrom")) null else runCatching { LocalDate.parse(o.getString("pausedFrom")) }.getOrNull(),
+            )
+        }
+
+        // ---------- কন্টেন্ট (ফোনের content.json হুবহু) ----------
+        fun parseContent(text: String): List<ContentItem> {
+            val arr = JSONObject(text).getJSONArray("items")
+            fun JSONObject.str(k: String): String? = if (isNull(k) || !has(k)) null else getString(k).ifBlank { null }
+            fun JSONObject.int(k: String): Int? = if (isNull(k) || !has(k)) null else getInt(k)
+            return (0 until arr.length()).map { i ->
+                val o = arr.getJSONObject(i)
+                val tags = o.getJSONArray("tags").let { a -> (0 until a.length()).map { a.getString(it) } }
+                val ref = o.optJSONObject("ref")
+                ContentItem(
+                    id = o.getString("id"), tags = tags, type = o.getString("type"), refBn = o.getString("ref_bn"),
+                    surah = ref?.int("surah"), ayahFrom = ref?.int("ayah_from"), ayahTo = ref?.int("ayah_to"),
+                    arabic = QuranScript.forFont(o.optString("arabic", "")),
+                    bn = o.getString("bn"), bnSource = o.getString("bn_source"), shortBn = o.getString("short_bn"),
+                    tone = o.getString("tone"), pairWith = o.str("pair_with"), grading = o.str("grading"),
+                    reviewedBy = o.str("reviewed_by"), link = o.str("link"),
+                )
+            }
+        }
+    }
+}

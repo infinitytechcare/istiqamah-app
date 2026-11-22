@@ -5,6 +5,8 @@ on:
     branches: [ main ]
     paths-ignore:
       - '**.md'
+      - 'desktop/**'
+      - '.github/workflows/build-mac.yml'
   pull_request:
   workflow_dispatch:
 
