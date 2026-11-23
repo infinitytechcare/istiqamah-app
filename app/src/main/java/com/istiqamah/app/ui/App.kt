@@ -108,6 +108,7 @@ fun App(
         r == "akhlaq" -> AkhlaqScreen(vm, open, back)
         r == "family" -> FamilyScreen(vm, open, back)
         r == "ilm" -> IlmScreen(vm, open, back)
+        r == "body" -> BodyScreen(vm, back)
         r == "deen" -> DeenHubScreen(vm, open, back)
         r == "companions" -> CompanionsScreen(vm, open, back)
         r == "questions" -> QuestionsScreen(vm, back)

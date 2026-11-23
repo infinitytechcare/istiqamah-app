@@ -394,6 +394,10 @@ fun SettingsScreen(app: MacApp) {
             SwitchRow("কোণে ছোট জানালা", "ওয়াক্ত/জামাতের ডাক পর্দার কোণে — \"পড়েছি\" বা \"১০ মিনিট পরে\"", s.callWindow) { on -> app.update { it.copy(callWindow = on) } }
             SwitchRow("শেষ সতর্কতা পুরো পর্দায়", "ওয়াক্ত শেষের ২০ মিনিট আগে, তখনো না পড়লে", s.fullScreenLast) { on -> app.update { it.copy(fullScreenLast = on) } }
             SwitchRow("শব্দ", null, s.sound) { on -> app.update { it.copy(sound = on) } }
+            SwitchRow(
+                "প্রতি ঘণ্টায় উঠে দাঁড়ানোর ডাক", "শরীরের হক — এক ঘণ্টা একটানা কাজের পর; দূরে থাকলে বা নামাজের ডাকের কাছে নয়",
+                s.standHourly,
+            ) { on -> app.update { it.copy(standHourly = on) } }
             SwitchRow("ম্যাক চালু হলে নিজে থেকে চালু", null, s.launchAtLogin) { on -> app.update { it.copy(launchAtLogin = on) } }
         }
 

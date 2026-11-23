@@ -161,6 +161,7 @@ class Prefs(context: Context) {
             fasting = fastingOn, suhoorLeadMin = suhoorLead, nafl = naflFasts,
             zakatHijri = zakatHijri, sadaqahDay = sadaqahDay, dhulHijjah = dhulHijjahOn,
             kinDay = kinDay, debtDue = debtDue, halaqaDay = halaqaDay, ilmAt = ilmAt,
+            walkAfterFajr = walkReminder,
         )
 
     // ---------- v0.3: সুন্নত দিনলিপি ----------
@@ -791,6 +792,38 @@ class Prefs(context: Context) {
     var batteryGuideSeen: Boolean
         get() = sp.getBoolean("battery_seen", false)
         set(v) = sp.edit().putBoolean("battery_seen", v).apply()
+
+    // ---------- v0.17: শরীরের হক ----------
+    /** কোন দিন কোন কাজ হয়েছে (শেষ ১২০ দিন) */
+    var bodyLog: Map<LocalDate, Set<com.istiqamah.app.core.BodyAct>>
+        get() {
+            val out = HashMap<LocalDate, MutableSet<com.istiqamah.app.core.BodyAct>>()
+            (sp.getStringSet("body_log", emptySet()) ?: emptySet()).forEach { e ->
+                val d = runCatching { LocalDate.parse(e.substringBefore('|')) }.getOrNull() ?: return@forEach
+                com.istiqamah.app.core.BodyAct.entries.firstOrNull { it.name == e.substringAfter('|') }?.let { out.getOrPut(d) { HashSet() }.add(it) }
+            }
+            return out
+        }
+        set(v) {
+            val keep = v.keys.sortedDescending().take(120).toSet()
+            sp.edit().putStringSet("body_log", v.filterKeys { it in keep }.flatMap { (d, ss) -> ss.map { "$d|${it.name}" } }.toSet()).apply()
+        }
+
+    fun toggleBody(d: LocalDate, a: com.istiqamah.app.core.BodyAct) {
+        val m = bodyLog.toMutableMap()
+        val cur = m[d].orEmpty()
+        m[d] = if (a in cur) cur - a else cur + a
+        bodyLog = m
+    }
+
+    var fitLevel: com.istiqamah.app.core.FitLevel
+        get() = com.istiqamah.app.core.FitLevel.entries.firstOrNull { it.name == sp.getString("fit_level", null) } ?: com.istiqamah.app.core.FitLevel.START
+        set(v) = sp.edit().putString("fit_level", v.name).apply()
+
+    /** ফজরের পর হাঁটার রিমাইন্ডার */
+    var walkReminder: Boolean
+        get() = sp.getBoolean("walk_on", false)
+        set(v) = sp.edit().putBoolean("walk_on", v).apply()
 
     // ---------- v0.14: ম্যাকের সাথে Wi-Fi সিঙ্ক ----------
     /** জোড়ার লিংক (গোপন চাবিসহ) — এনক্রিপ্ট করে রাখা; null = জোড়া নেই */

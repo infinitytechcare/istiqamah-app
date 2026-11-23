@@ -150,4 +150,20 @@ class MacEngineTest {
             .first { it.prayer == Prayer.ASR && it.kind == NotifKind.STRONG_CALL }
         assertTrue(after.fireAt.isAfter(quiet))
     }
+
+    @Test fun standReminderRules() {
+        val at = day.atTime(15, 0).atZone(zone)
+        assertTrue(MacEngine.standDue(men, at.minusMinutes(61), at, idleSec = 10, nearPrayer = false))
+        assertTrue(!MacEngine.standDue(men, at.minusMinutes(40), at, 10, false))     // এক ঘণ্টা হয়নি
+        assertTrue(!MacEngine.standDue(men, at.minusMinutes(61), at, 200, false))    // কাজে নেই
+        assertTrue(!MacEngine.standDue(men, at.minusMinutes(61), at, 10, true))      // নামাজের ডাকের কাছে
+        assertTrue(!MacEngine.standDue(men.copy(standHourly = false), at.minusMinutes(61), at, 10, false))
+        val night = day.atTime(23, 0).atZone(zone)
+        assertTrue(!MacEngine.standDue(men, night.minusHours(2), night, 10, false))  // রাতে নয়
+        val ws = MacEngine.windowsByDate(men, day, zone)
+        val asr = ws.getValue(day).first { it.prayer == Prayer.ASR }.start
+        val jam = MacEngine.jamaat(men, ws).getValue(day to Prayer.ASR).at
+        assertTrue(MacEngine.nearPrayerCall(men, jam.minusMinutes(5), emptySet()))
+        assertTrue(!MacEngine.nearPrayerCall(men, asr.minusHours(1), emptySet()))
+    }
 }

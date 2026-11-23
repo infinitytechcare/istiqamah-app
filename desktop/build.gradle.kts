@@ -8,7 +8,7 @@ plugins {
 }
 
 /** ম্যাক অ্যাপের ভার্সন — ফোনের থেকে আলাদা (DMG-তে প্রথম সংখ্যা ০ হতে পারে না) */
-val macVersion = "1.2.0"
+val macVersion = "1.3.0"
 
 group = "com.istiqamah.mac"
 version = macVersion

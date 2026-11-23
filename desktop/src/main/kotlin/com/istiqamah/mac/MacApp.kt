@@ -63,6 +63,8 @@ class MacApp(private val store: MacStore = MacStore()) {
     private val going = HashMap<Pair<LocalDate, Prayer>, ZonedDateTime>()
     private var lastTick: ZonedDateTime? = null
     private var nextId = 1L
+    /** শেষবার উঠে দাঁড়ানোর ডাক বা দূরে থাকার পর */
+    private var lastStand: ZonedDateTime = ZonedDateTime.now()
 
     val logged: Set<Pair<LocalDate, Prayer>>
         get() = logs.values.flatMap { l -> l.statuses.keys.map { l.date to it } }.toSet()
@@ -154,6 +156,19 @@ class MacApp(private val store: MacStore = MacStore()) {
         snoozed.removeAll(ready.toSet())
         ready.map { it.second }.filter { (it.date to it.prayer) !in logged }.forEach { fire(it, forceCall = true) }
         if (fired.size > 500) fired.clear()
+        checkStand(t, logged)
+    }
+
+    /** v1.3: এক ঘণ্টা একটানা কাজে থাকলে উঠে দাঁড়ানোর ছোট ডাক */
+    private fun checkStand(t: ZonedDateTime, logged: Set<Pair<LocalDate, Prayer>>) {
+        if (!settings.standHourly) return
+        val idle = MacSystem.idleSeconds()
+        if (idle >= MacEngine.AWAY_SEC) { lastStand = t; return } // উঠে গিয়েছিলেন — নতুন করে গোনা
+        val busy = calls.isNotEmpty() || fullScreen != null
+        if (MacEngine.standDue(settings, lastStand, t, idle, busy || MacEngine.nearPrayerCall(settings, t, logged))) {
+            lastStand = t
+            MacSystem.banner("🧍 একটু উঠে দাঁড়ান", "এক ঘণ্টা বসে আছেন — ২–৩ মিনিট হাঁটুন বা স্ট্রেচ করুন। তোমার শরীরেরও তোমার ওপর হক আছে (বুখারি ১৯৭৫)।", settings.sound)
+        }
     }
 
     private fun fire(n: PlannedNotif, forceCall: Boolean = false) {

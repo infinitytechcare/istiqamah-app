@@ -442,6 +442,16 @@ object Notifier {
                 fasting(ctx, kind, date, id)
             NotifKind.ZAKAT_SOON, NotifKind.ZAKAT_DAY, NotifKind.SADAQAH_WEEKLY, NotifKind.DHUL_HIJJAH_EVE,
             NotifKind.KIN_DAY, NotifKind.DEBT_DUE, NotifKind.FAMILY_HALAQA -> charity(ctx, kind, date, id)
+            NotifKind.FIT_WALK -> {
+                val prefs = Prefs(ctx)
+                if (com.istiqamah.app.core.BodyAct.WALK in prefs.bodyLog[date].orEmpty()) return
+                val p = com.istiqamah.app.core.Body.proofFor(date)
+                simple(
+                    "🚶 ফজরের পর ${Bn.num(prefs.fitLevel.walkMin)} মিনিট হাঁটা",
+                    "সকালের বরকতের সময় — শরীরেরও আপনার ওপর হক আছে।\n\n${p.text}\n— ${p.ref}",
+                    "body",
+                )
+            }
             NotifKind.ILM_DAILY -> {
                 val prefs = Prefs(ctx)
                 if (date in prefs.ilmLog) return

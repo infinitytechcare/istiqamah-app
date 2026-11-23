@@ -22,6 +22,18 @@ object MacSystem {
         run("/usr/bin/osascript", "-e", "on run argv", "-e", script, "-e", "end run", title, body)
     }
 
+    /** কতক্ষণ কিবোর্ড-মাউস ছোঁয়া হয়নি (সেকেন্ড) — macOS-এর ioreg থেকে; না পারলে 0 */
+    fun idleSeconds(): Long {
+        if (!isMac) return 0
+        return runCatching {
+            val p = ProcessBuilder("/usr/sbin/ioreg", "-c", "IOHIDSystem", "-d", "4").redirectErrorStream(true).start()
+            val line = p.inputStream.bufferedReader().useLines { seq -> seq.firstOrNull { it.contains("\"HIDIdleTime\"") } }
+            p.waitFor()
+            val ns = line?.substringAfter('=')?.trim()?.toLongOrNull() ?: 0L
+            ns / 1_000_000_000L
+        }.getOrDefault(0L)
+    }
+
     fun chime(strong: Boolean = false) {
         if (!isMac) return
         val f = if (strong) "/System/Library/Sounds/Submarine.aiff" else "/System/Library/Sounds/Glass.aiff"

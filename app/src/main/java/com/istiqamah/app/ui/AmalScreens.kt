@@ -85,6 +85,14 @@ fun AmalScreen(vm: AppVm, open: (String) -> Unit, requestUnlock: (() -> Unit) ->
         }
         Spacer(Modifier.height(12.dp))
 
+        // v0.17: শরীরের হক
+        SectionCard(Modifier.clickable { open("body") }) {
+            Text("শরীরের হক — শক্তিশালী মুমিন", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+            Text("ফজরের পর হাঁটা · সপ্তাহে ৩ দিন শক্তির ব্যায়াম · কাজের মাঝে উঠে দাঁড়ানো · কোরআন-হাদিসের উৎসাহ",
+                fontSize = 14.sp, color = Muted)
+        }
+        Spacer(Modifier.height(12.dp))
+
         // v0.12: ইলম ও দাওয়াহ
         SectionCard(Modifier.clickable { open("ilm") }) {
             Text("ইলম ও দাওয়াহ", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)

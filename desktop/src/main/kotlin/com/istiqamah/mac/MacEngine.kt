@@ -53,6 +53,8 @@ data class MacSettings(
     val launchAtLogin: Boolean = true,
     /** (মহিলা) বিরতি শুরুর তারিখ; null = বিরতি নেই — ফোনের মতোই গোপন, কোথাও কারণ লেখা হয় না */
     val pausedFrom: LocalDate? = null,
+    /** v1.3: প্রতি ঘণ্টায় উঠে দাঁড়ানোর ডাক (শরীরের হক) */
+    val standHourly: Boolean = true,
 )
 
 /** ম্যাকে ডাক কীভাবে দেখাবে */
@@ -161,6 +163,23 @@ object MacEngine {
         val tags = ContentPicker.tagsFor(Amal.SALAH, prayer, gain)
         return ContentPicker.pickMajorFirst(pool, tags, seen, today, salt) ?: ContentPicker.pickAny(pool, tags, seen, today, salt)
     }
+
+    // ---------- v1.3: শরীরের হক — উঠে দাঁড়ানো ----------
+    const val STAND_EVERY_MIN = 60L
+    /** এর বেশি সময় কিবোর্ড-মাউস ছোঁয়া না হলে ধরে নিই উঠে গেছেন */
+    const val AWAY_SEC = 300L
+
+    /**
+     * এখন উঠে দাঁড়ানোর ডাক দেব কি না: চালু, সকাল ৮টা–রাত ১০টা, শেষ ডাক/বিরতির পর এক ঘণ্টা,
+     * এখন কাজে আছেন (২ মিনিটের মধ্যে কিবোর্ড-মাউস ছুঁয়েছেন), আর নামাজের কোনো ডাকের কাছাকাছি নয়।
+     */
+    fun standDue(s: MacSettings, lastAt: ZonedDateTime, now: ZonedDateTime, idleSec: Long, nearPrayer: Boolean): Boolean =
+        s.standHourly && now.hour in 8..21 && Duration.between(lastAt, now).toMinutes() >= STAND_EVERY_MIN &&
+            idleSec < 120 && !nearPrayer
+
+    /** আগামী/গত ১০ মিনিটে নামাজের কোনো ডাক আছে কি না */
+    fun nearPrayerCall(s: MacSettings, now: ZonedDateTime, logged: Set<Pair<LocalDate, Prayer>>): Boolean =
+        plan(s, now.minusMinutes(10), logged).any { !it.fireAt.isAfter(now.plusMinutes(10)) }
 
     /** "২৩ মিনিট", "১ ঘণ্টা ৫ মিনিট" */
     fun countdown(d: Duration): String {

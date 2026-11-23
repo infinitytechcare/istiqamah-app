@@ -139,6 +139,7 @@ class MacStore(private val dir: File = defaultDir()) {
             .put("callWindow", s.callWindow).put("fullScreenLast", s.fullScreenLast)
             .put("sound", s.sound).put("launchAtLogin", s.launchAtLogin)
             .put("pausedFrom", s.pausedFrom?.toString() ?: JSONObject.NULL)
+            .put("standHourly", s.standHourly)
 
         private fun JSONObject.time(k: String, def: LocalTime?): LocalTime? =
             if (!has(k)) def else if (isNull(k)) null else runCatching { LocalTime.parse(getString(k)) }.getOrDefault(def)
@@ -164,6 +165,7 @@ class MacStore(private val dir: File = defaultDir()) {
                 fullScreenLast = o.optBoolean("fullScreenLast", d.fullScreenLast),
                 sound = o.optBoolean("sound", d.sound),
                 launchAtLogin = o.optBoolean("launchAtLogin", d.launchAtLogin),
+                standHourly = o.optBoolean("standHourly", d.standHourly),
                 pausedFrom = if (o.isNull("pausedFrom") || !o.has("pausedFrom")) null else runCatching { LocalDate.parse(o.getString("pausedFrom")) }.getOrNull(),
             )
         }
