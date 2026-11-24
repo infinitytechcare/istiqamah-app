@@ -475,8 +475,8 @@ class AppVm(app: Application) : AndroidViewModel(app) {
         return r
     }
 
-    fun unpairMac() {
-        PhoneSync.unpair(ctx)
+    fun unpairMac(macId: String) {
+        PhoneSync.unpair(ctx, macId)
         syncVersion++
     }
 }

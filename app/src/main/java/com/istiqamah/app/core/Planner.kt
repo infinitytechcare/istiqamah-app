@@ -127,7 +127,15 @@ enum class NotifKind(val isPrayer: Boolean, val priority: Int) {
 
     // ---- v0.17: শরীরের হক ----
     /** ফজরের পর হাঁটার রিমাইন্ডার (আজ হাঁটা হয়ে গেলে আসে না) */
-    FIT_WALK(false, 2);
+    FIT_WALK(false, 2),
+
+    // ---- v0.18: সময়মতো কাজ — হালাল রুজি ----
+    /** অফিসে রওনা দেওয়ার সময় (বের হওয়ার দোয়াসহ) */
+    WORK_LEAVE(false, 2),
+    /** কাজ শুরুর নিয়ত */
+    WORK_START(false, 1),
+    /** কাজ শেষ — শুকরিয়া, সময়মতো বাড়ি */
+    WORK_END(false, 1);
 
     val isHomeNudge: Boolean get() = this == HOME_NUDGE_1 || this == HOME_NUDGE_2 || this == HOME_NUDGE_3
 
@@ -195,6 +203,12 @@ data class ExtraReminders(
     val ilmAt: LocalTime? = null,
     /** v0.17: ফজরের পর হাঁটার রিমাইন্ডার */
     val walkAfterFajr: Boolean = false,
+    /** v0.18: অফিসের দিনের রিমাইন্ডার; null = বন্ধ */
+    val work: WorkReminders? = null,
+    /** অফিসের সময় ও দিন */
+    val workSchedule: WorkSchedule = WorkSchedule(),
+    /** "আজ ঘরে" বাছা দিনগুলো — সেদিন অফিসের ডাক নয় */
+    val dayOverrides: Map<LocalDate, DayOverride> = emptyMap(),
 )
 
 data class PlannerInput(
@@ -527,6 +541,7 @@ object Planner {
         val w = windows.associateBy { it.prayer }
         val out = ArrayList<PlannedNotif>()
         ex.ilmAt?.let { t -> out += PlannedNotif(date, null, NotifKind.ILM_DAILY, date.atTime(t).atZone(w.getValue(Prayer.FAJR).start.zone)) }
+        out += Rizq.plan(date, ex.workSchedule, ex.work, ex.dayOverrides[date] ?: DayOverride.AUTO, w.getValue(Prayer.FAJR).start.zone)
         if (ex.walkAfterFajr) out += PlannedNotif(date, null, NotifKind.FIT_WALK, Body.walkTime(w.getValue(Prayer.FAJR), input.jamaat[date to Prayer.FAJR]?.at))
         if (ex.halaqaDay != null && date.dayOfWeek == ex.halaqaDay) out += PlannedNotif(date, null, NotifKind.FAMILY_HALAQA, w.getValue(Prayer.ISHA).start.plusMinutes(20))
         if (ex.kinDay != null && date.dayOfWeek == ex.kinDay) out += PlannedNotif(date, null, NotifKind.KIN_DAY, w.getValue(Prayer.MAGHRIB).start.plusMinutes(40))

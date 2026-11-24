@@ -47,7 +47,7 @@ fun MacSyncScreen(vm: AppVm, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    var confirmUnpair by remember { mutableStateOf(false) }
+    var confirmUnpair by remember { mutableStateOf<String?>(null) }
 
     val scanner = rememberLauncherForActivityResult(ScanContract()) { r ->
         val text = r.contents ?: return@rememberLauncherForActivityResult
@@ -60,7 +60,7 @@ fun MacSyncScreen(vm: AppVm, onBack: () -> Unit) {
             val res = vm.pairMac(text)
             busy = false
             message = when (res) {
-                PhoneSync.Result.OK -> "জোড়া লেগেছে ✓ এখন থেকে নামাজের চিহ্ন দুই জায়গায় মিলে থাকবে।"
+                PhoneSync.Result.OK -> "জোড়া লেগেছে ✓ এখন থেকে নামাজের চিহ্ন সব জায়গায় মিলে থাকবে।"
                 null -> "QR পড়া যায়নি, আবার চেষ্টা করুন।"
                 else -> "জোড়া রাখা হয়েছে, কিন্তু এখন ম্যাক পাওয়া যায়নি — ফোন আর ম্যাক একই Wi-Fi-তে আছে কি না দেখুন।"
             }
@@ -75,21 +75,22 @@ fun MacSyncScreen(vm: AppVm, onBack: () -> Unit) {
 
     key(vm.syncVersion) {
         val p = vm.prefs
-        val pair = p.syncPair
+        val pairs = p.syncPairs
         Column(
             Modifier.fillMaxSize().background(Cream).statusBarsPadding().navigationBarsPadding()
                 .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
         ) {
             ScreenHeader("ম্যাকের সাথে সিঙ্ক", "একই Wi-Fi-তে — ইন্টারনেট বা সার্ভার ছাড়া", onBack)
 
-            if (pair == null) {
+            if (pairs.isEmpty()) {
                 SectionCard {
                     Text("ল্যাপটপে কাজ করার সময়ও নামাজের ডাক", fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Emerald800)
                     Spacer(Modifier.height(6.dp))
                     Text(
                         "১. ম্যাকে ইস্তিকামাহ খুলুন → মেনু বারের চাঁদ → \"ফোনের সাথে সিঙ্ক…\"\n" +
                             "২. নিচের বোতাম চেপে ম্যাকের পর্দার QR কোড স্ক্যান করুন\n" +
-                            "৩. ফোন আর ম্যাক একই Wi-Fi-তে থাকলেই হবে",
+                            "৩. ফোন আর ম্যাক একই Wi-Fi-তে থাকলেই হবে\n" +
+                            "বাসা আর অফিসে আলাদা ম্যাক থাকলে দুটোরই QR একবার করে স্ক্যান করুন।",
                         fontSize = 15.sp, color = Ink, lineHeight = 24.sp,
                     )
                     Spacer(Modifier.height(12.dp))
@@ -100,37 +101,42 @@ fun MacSyncScreen(vm: AppVm, onBack: () -> Unit) {
                     ) { Text(if (busy) "জোড়া লাগছে…" else "QR স্ক্যান করুন") }
                 }
             } else {
-                SectionCard {
-                    Text("✓ ${p.syncMacName.ifBlank { pair.name }}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
-                    Spacer(Modifier.height(4.dp))
-                    val at = p.syncLastAt.takeIf { it > 0 }?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
-                    Text(
-                        when {
-                            at == null -> "এখনো সিঙ্ক হয়নি"
-                            else -> "সর্বশেষ সিঙ্ক: ${Bn.date(at.toLocalDate())}, ${Bn.time(at.toLocalTime())}" +
-                                if (!p.syncLastOk) " · শেষ চেষ্টায় ম্যাক পাওয়া যায়নি" else ""
-                        },
-                        fontSize = 14.sp, color = if (p.syncLastOk || at == null) Muted else Color(0xFFB5452F),
-                    )
-                    Spacer(Modifier.height(12.dp))
-                    Button(
-                        onClick = {
-                            busy = true
-                            scope.launch {
-                                val r = vm.syncMacNow()
-                                busy = false
-                                message = r.bn
-                            }
-                        },
-                        enabled = !busy, colors = ButtonDefaults.buttonColors(containerColor = Emerald700),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) { Text(if (busy) "সিঙ্ক হচ্ছে…" else "এখনই সিঙ্ক করুন") }
-                    Spacer(Modifier.height(6.dp))
-                    OutlinedButton(onClick = { scan() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("নতুন QR স্ক্যান করুন") }
-                    TextButton(onClick = { confirmUnpair = true }, modifier = Modifier.fillMaxWidth()) {
-                        Text("জোড়া ভাঙুন", color = Color(0xFFB5452F))
+                for (pair in pairs) {
+                    SectionCard {
+                        Text("✓ ${p.syncMacName(pair.macId).ifBlank { pair.name }}", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Emerald800)
+                        Spacer(Modifier.height(4.dp))
+                        val ok = p.syncOk(pair.macId)
+                        val at = p.syncAt(pair.macId).takeIf { it > 0 }?.let { Instant.ofEpochMilli(it).atZone(ZoneId.systemDefault()) }
+                        Text(
+                            when {
+                                at == null -> "এখনো সিঙ্ক হয়নি"
+                                else -> "সর্বশেষ সিঙ্ক: ${Bn.date(at.toLocalDate())}, ${Bn.time(at.toLocalTime())}" +
+                                    if (!ok) " · এখন এই Wi-Fi-তে নেই" else ""
+                            },
+                            fontSize = 14.sp, color = if (ok || at == null) Muted else Color(0xFF9A7B2F),
+                        )
+                        TextButton(onClick = { confirmUnpair = pair.macId }) { Text("এই ম্যাকের জোড়া ভাঙুন", color = Color(0xFFB5452F)) }
                     }
+                    Spacer(Modifier.height(8.dp))
                 }
+                Button(
+                    onClick = {
+                        busy = true
+                        scope.launch {
+                            val r = vm.syncMacNow()
+                            busy = false
+                            message = if (r == PhoneSync.Result.NOT_FOUND && pairs.size > 1) "এই Wi-Fi-তে কোনো জোড়া ম্যাক পাওয়া যায়নি।" else r.bn
+                        }
+                    },
+                    enabled = !busy, colors = ButtonDefaults.buttonColors(containerColor = Emerald700),
+                    modifier = Modifier.fillMaxWidth(),
+                ) { Text(if (busy) "সিঙ্ক হচ্ছে…" else "এখনই সিঙ্ক করুন") }
+                Spacer(Modifier.height(6.dp))
+                OutlinedButton(onClick = { scan() }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("আরেকটা ম্যাক যোগ করুন (QR স্ক্যান)") }
+                Text(
+                    "যে ম্যাক এই Wi-Fi-তে আছে, ফোন তার সাথে নিজে থেকে মেলায়। অফিসে দেওয়া চিহ্ন ফোন হয়ে বাসার ম্যাকে পৌঁছায়।",
+                    fontSize = 13.sp, color = Muted, lineHeight = 19.sp, modifier = Modifier.padding(top = 6.dp),
+                )
             }
 
             message?.let {
@@ -158,13 +164,14 @@ fun MacSyncScreen(vm: AppVm, onBack: () -> Unit) {
         }
     }
 
-    if (confirmUnpair) {
+    confirmUnpair?.let { id ->
         AlertDialog(
-            onDismissRequest = { confirmUnpair = false },
-            title = { Text("জোড়া ভাঙবেন?") },
-            text = { Text("ফোন আর ম্যাকের চিহ্ন আর মিলবে না। ফোনের সব চিহ্ন ফোনেই থাকবে।") },
-            confirmButton = { TextButton(onClick = { vm.unpairMac(); confirmUnpair = false; message = null }) { Text("ভাঙুন") } },
-            dismissButton = { TextButton(onClick = { confirmUnpair = false }) { Text("থাক") } },
+            onDismissRequest = { confirmUnpair = null },
+            title = { Text("এই ম্যাকের জোড়া ভাঙবেন?") },
+            text = { Text("এই ম্যাকের সাথে চিহ্ন আর মিলবে না। অন্য ম্যাক আর ফোনের সব চিহ্ন যেমন আছে থাকবে।") },
+            confirmButton = { TextButton(onClick = { vm.unpairMac(id); confirmUnpair = null; message = null }) { Text("ভাঙুন") } },
+            dismissButton = { TextButton(onClick = { confirmUnpair = null }) { Text("থাক") } },
         )
     }
+
 }

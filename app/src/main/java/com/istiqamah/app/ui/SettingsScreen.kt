@@ -117,9 +117,9 @@ fun SettingsScreen(vm: AppVm, onOpenBattery: () -> Unit, requestUnlock: (() -> U
             SectionCard {
                 Title("ম্যাকের সাথে সিঙ্ক")
                 Item(
-                    p.syncPair?.let { "✓ " + p.syncMacName.ifBlank { it.name } } ?: "ম্যাকবুকে ইস্তিকামাহ",
-                    if (p.syncPair == null) "ল্যাপটপে কাজের সময়ও নামাজের ডাক — একই Wi-Fi-তে, QR স্ক্যান করে জোড়া"
-                    else "নামাজের চিহ্ন দুই জায়গায় মিলে থাকে",
+                    p.syncPairs.takeIf { it.isNotEmpty() }?.let { l -> "✓ " + l.joinToString(", ") { p.syncMacName(it.macId).ifBlank { it.name } } } ?: "ম্যাকবুকে ইস্তিকামাহ",
+                    if (p.syncPairs.isEmpty()) "ল্যাপটপে কাজের সময়ও নামাজের ডাক — একই Wi-Fi-তে, QR স্ক্যান করে জোড়া (বাসা, অফিস — একাধিক ম্যাক)"
+                    else "নামাজের চিহ্ন সব জায়গায় মিলে থাকে — যে ম্যাক কাছে, তার সাথে",
                     onOpenSync,
                 )
             }

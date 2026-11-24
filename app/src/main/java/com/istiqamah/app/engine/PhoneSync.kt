@@ -37,26 +37,26 @@ object PhoneSync {
         REJECTED("ম্যাক চাবি চিনল না — ম্যাকে নতুন QR বানানো হয়ে থাকলে আবার স্ক্যান করুন"),
     }
 
-    fun paired(ctx: Context): PairInfo? = Prefs(ctx).syncPair
+    /** জোড়া লাগানো সব ম্যাক (v0.18: বাসা, অফিস… একাধিক) */
+    fun pairs(ctx: Context): List<PairInfo> = Prefs(ctx).syncPairs
 
-    /** QR থেকে পাওয়া লিংক দিয়ে জোড়া — সাথে সাথে প্রথম সিঙ্ক (ব্লক করে; UI থেকে IO থ্রেডে ডাকুন) */
+    fun hasPairs(ctx: Context): Boolean = pairs(ctx).isNotEmpty()
+
+    /** QR থেকে পাওয়া লিংক দিয়ে জোড়া (আগেরগুলো থাকে) — সাথে সাথে ওই ম্যাকের সাথে প্রথম সিঙ্ক */
     fun pair(ctx: Context, uri: String): Result? {
         val info = SyncPair.parse(uri) ?: return null
-        val prefs = Prefs(ctx)
-        prefs.syncPair = info
-        prefs.syncLastHost = ""
-        prefs.syncMacName = info.name
-        return syncNow(ctx)
+        Prefs(ctx).addSyncPair(info)
+        return syncNow(ctx, only = info.macId)
     }
 
-    fun unpair(ctx: Context) {
-        Prefs(ctx).syncPair = null
+    fun unpair(ctx: Context, macId: String) {
+        Prefs(ctx).removeSyncPair(macId)
     }
 
     /** পেছনে চুপচাপ সিঙ্ক (চিহ্ন দেওয়ার পরে) — জোড়া না থাকলে কিছুই না */
     fun syncAsync(ctx: Context, after: ((Boolean) -> Unit)? = null) {
         val app = ctx.applicationContext
-        if (Prefs(app).syncPair == null) return
+        if (!hasPairs(app)) return
         exec.execute {
             val changed = runCatching { syncNow(app) == Result.OK && lastChanged }.getOrDefault(false)
             after?.invoke(changed)
@@ -66,22 +66,34 @@ object PhoneSync {
     @Volatile private var lastChanged = false
 
     /**
-     * এখনই সিঙ্ক — ব্লক করে, [budgetMs]-এর মধ্যে। ম্যাক না পেলে চুপচাপ ব্যর্থ।
-     * ম্যাক থেকে নতুন চিহ্ন এলে বসিয়ে অ্যালার্ম নতুন করে সাজায়।
+     * এখনই সিঙ্ক — ব্লক করে, [budgetMs]-এর মধ্যে। যে ম্যাক এই Wi-Fi-তে আছে তার সাথে
+     * (সবচেয়ে সম্প্রতি পাওয়াটা আগে চেষ্টা)। একাধিক পাওয়া গেলে সবার সাথে — ফোন সেতুর কাজ করে:
+     * অফিসের ম্যাকের চিহ্ন ফোন হয়ে বাসার ম্যাকে যায়।
      */
     @Synchronized
-    fun syncNow(ctx: Context, budgetMs: Long = 6000): Result {
+    fun syncNow(ctx: Context, budgetMs: Long = 6000, only: String? = null): Result {
         lastChanged = false
         val prefs = Prefs(ctx)
-        val pair = prefs.syncPair ?: return Result.NOT_PAIRED
+        val all = prefs.syncPairs.filter { only == null || it.macId == only }
+        if (all.isEmpty()) return Result.NOT_PAIRED
+        val order = all.sortedWith(compareByDescending<PairInfo> { prefs.syncOk(it.macId) }.thenByDescending { prefs.syncAt(it.macId) })
         val deadline = System.currentTimeMillis() + budgetMs
+        var any = false
+        for (pair in order) {
+            if (deadline - System.currentTimeMillis() < 400) break
+            if (syncOne(ctx, prefs, pair, deadline)) any = true
+        }
+        return if (any) Result.OK else Result.NOT_FOUND
+    }
+
+    private fun syncOne(ctx: Context, prefs: Prefs, pair: PairInfo, deadline: Long): Boolean {
         val store = LogStore.get(ctx)
         val from = Engine.today(ctx).minusDays(SyncWire.WINDOW_DAYS)
         val local = store.syncEvents(from)
         val request = SyncWire.request(prefs.syncDeviceId, deviceName(), local, settings(prefs))
 
         val candidates = LinkedHashSet<Pair<String, Int>>()
-        prefs.syncLastHost.takeIf { it.contains(':') }?.let { h ->
+        prefs.syncHost(pair.macId).takeIf { it.contains(':') }?.let { h ->
             h.substringAfterLast(':').toIntOrNull()?.let { candidates += h.substringBeforeLast(':') to it }
         }
         pair.hosts.forEach { candidates += it to pair.port }
@@ -107,13 +119,13 @@ object PhoneSync {
         }
         val r = res
         if (r == null || r.optString("dev") != "mac") {
-            prefs.syncLastOk = false
-            return Result.NOT_FOUND
+            prefs.setSyncOk(pair.macId, false)
+            return false
         }
-        used?.let { prefs.syncLastHost = "${it.first}:${it.second}" }
-        prefs.syncLastOk = true
-        prefs.syncLastAt = System.currentTimeMillis()
-        r.optString("name", "").takeIf { it.isNotBlank() }?.let { prefs.syncMacName = it.take(40) }
+        used?.let { prefs.setSyncHost(pair.macId, "${it.first}:${it.second}") }
+        prefs.setSyncOk(pair.macId, true)
+        prefs.setSyncAt(pair.macId, System.currentTimeMillis())
+        r.optString("name", "").takeIf { it.isNotBlank() }?.let { prefs.setSyncMacName(pair.macId, it) }
 
         val remote = SyncWire.parseEvents(r.optJSONArray("events")).filter { !it.date.isBefore(from) }
         val apply = SyncLog.toApply(local, remote)
@@ -121,7 +133,7 @@ object PhoneSync {
             applyRemote(ctx, apply)
             lastChanged = true
         }
-        return Result.OK
+        return true
     }
 
     /** ম্যাকের নতুন চিহ্ন ফোনে বসানো — কাযার হিসাব চেক-ইনের মতোই, তারপর অ্যালার্ম নতুন করে */

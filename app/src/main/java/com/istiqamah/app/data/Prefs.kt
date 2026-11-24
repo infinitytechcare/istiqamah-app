@@ -162,6 +162,9 @@ class Prefs(context: Context) {
             zakatHijri = zakatHijri, sadaqahDay = sadaqahDay, dhulHijjah = dhulHijjahOn,
             kinDay = kinDay, debtDue = debtDue, halaqaDay = halaqaDay, ilmAt = ilmAt,
             walkAfterFajr = walkReminder,
+            work = if (workRemindOn && workEnabled) workReminders else null,
+            workSchedule = homeMode.schedule,
+            dayOverrides = overrides,
         )
 
     // ---------- v0.3: সুন্নত দিনলিপি ----------
@@ -719,7 +722,7 @@ class Prefs(context: Context) {
         sp.edit().putStringSet("day_override", keep.map { (k, v) -> "$k:${v.code}" }.toSet()).apply()
     }
 
-    private val overrides: Map<LocalDate, DayOverride>
+    internal val overrides: Map<LocalDate, DayOverride>
         get() = (sp.getStringSet("day_override", emptySet()) ?: emptySet()).mapNotNull { e ->
             val d = runCatching { LocalDate.parse(e.substringBefore(':')) }.getOrNull() ?: return@mapNotNull null
             d to DayOverride.fromCode(e.substringAfter(':').toIntOrNull() ?: 0)
@@ -793,6 +796,21 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("battery_seen", false)
         set(v) = sp.edit().putBoolean("battery_seen", v).apply()
 
+    // ---------- v0.18: সময়মতো কাজ — হালাল রুজি ----------
+    var workRemindOn: Boolean
+        get() = sp.getBoolean("work_rem_on", false)
+        set(v) = sp.edit().putBoolean("work_rem_on", v).apply()
+
+    var workReminders: com.istiqamah.app.core.WorkReminders
+        get() = com.istiqamah.app.core.WorkReminders(
+            leave = sp.getBoolean("work_rem_leave", true),
+            start = sp.getBoolean("work_rem_start", true),
+            end = sp.getBoolean("work_rem_end", false),
+            commuteMin = sp.getInt("work_commute", 30),
+        )
+        set(v) = sp.edit().putBoolean("work_rem_leave", v.leave).putBoolean("work_rem_start", v.start)
+            .putBoolean("work_rem_end", v.end).putInt("work_commute", v.commuteMin.coerceIn(0, 180)).apply()
+
     // ---------- v0.17: শরীরের হক ----------
     /** কোন দিন কোন কাজ হয়েছে (শেষ ১২০ দিন) */
     var bodyLog: Map<LocalDate, Set<com.istiqamah.app.core.BodyAct>>
@@ -825,36 +843,55 @@ class Prefs(context: Context) {
         get() = sp.getBoolean("walk_on", false)
         set(v) = sp.edit().putBoolean("walk_on", v).apply()
 
-    // ---------- v0.14: ম্যাকের সাথে Wi-Fi সিঙ্ক ----------
-    /** জোড়ার লিংক (গোপন চাবিসহ) — এনক্রিপ্ট করে রাখা; null = জোড়া নেই */
-    var syncPair: com.istiqamah.app.core.PairInfo?
-        get() = com.istiqamah.app.core.SyncPair.parse(secret("sync_pair").ifBlank { null })
-        set(v) {
-            setSecret("sync_pair", v?.let { com.istiqamah.app.core.SyncPair.uri(it) } ?: "")
-            if (v == null) sp.edit().remove("sync_host").remove("sync_at").remove("sync_ok").remove("sync_mac").apply()
+    // ---------- v0.14: ম্যাকের সাথে Wi-Fi সিঙ্ক; v0.18: একাধিক ম্যাক (বাসা, অফিস…) ----------
+    /** জোড়া লাগানো সব ম্যাক (গোপন চাবিসহ লিংক) — এনক্রিপ্ট করে রাখা */
+    var syncPairs: List<com.istiqamah.app.core.PairInfo>
+        get() {
+            val many = secret("sync_pairs").lines().mapNotNull { com.istiqamah.app.core.SyncPair.parse(it.ifBlank { null }) }
+            if (many.isNotEmpty()) return many.distinctBy { it.macId }
+            // ০.১৪–০.১৭-এর একটা জোড়া থেকে নতুন তালিকায়
+            val old = com.istiqamah.app.core.SyncPair.parse(secret("sync_pair").ifBlank { null }) ?: return emptyList()
+            setSecret("sync_pairs", com.istiqamah.app.core.SyncPair.uri(old))
+            listOf("host", "at", "ok", "mac").forEach { k ->
+                val v = sp.all["sync_$k"] ?: return@forEach
+                val e = sp.edit()
+                when (v) {
+                    is String -> e.putString("sync_${k}_${old.macId}", v)
+                    is Long -> e.putLong("sync_${k}_${old.macId}", v)
+                    is Boolean -> e.putBoolean("sync_${k}_${old.macId}", v)
+                }
+                e.remove("sync_$k").apply()
+            }
+            setSecret("sync_pair", "")
+            return listOf(old)
         }
+        set(v) = setSecret("sync_pairs", v.distinctBy { it.macId }.joinToString("\n") { com.istiqamah.app.core.SyncPair.uri(it) })
+
+    /** নতুন জোড়া যোগ বা একই ম্যাকের নতুন QR হলে বদলানো */
+    fun addSyncPair(info: com.istiqamah.app.core.PairInfo) {
+        syncPairs = syncPairs.filter { it.macId != info.macId } + info
+        setSyncHost(info.macId, "")
+        setSyncMacName(info.macId, info.name)
+    }
+
+    fun removeSyncPair(macId: String) {
+        syncPairs = syncPairs.filter { it.macId != macId }
+        sp.edit().remove("sync_host_$macId").remove("sync_at_$macId").remove("sync_ok_$macId").remove("sync_mac_$macId").apply()
+    }
 
     /** এই ফোনের এলোমেলো আইডি (একবার তৈরি) */
     val syncDeviceId: String
         get() = sp.getString("sync_dev", null) ?: com.istiqamah.app.core.SyncPair.newId().also { sp.edit().putString("sync_dev", it).apply() }
 
-    /** শেষবার যে ঠিকানায় ম্যাক পাওয়া গিয়েছিল (host:port) */
-    var syncLastHost: String
-        get() = sp.getString("sync_host", "") ?: ""
-        set(v) = sp.edit().putString("sync_host", v).apply()
-
-    var syncLastAt: Long
-        get() = sp.getLong("sync_at", 0L)
-        set(v) = sp.edit().putLong("sync_at", v).apply()
-
-    /** শেষ চেষ্টা সফল হয়েছিল কি না */
-    var syncLastOk: Boolean
-        get() = sp.getBoolean("sync_ok", false)
-        set(v) = sp.edit().putBoolean("sync_ok", v).apply()
-
-    var syncMacName: String
-        get() = sp.getString("sync_mac", "") ?: ""
-        set(v) = sp.edit().putString("sync_mac", v).apply()
+    /** শেষবার যে ঠিকানায় এই ম্যাক পাওয়া গিয়েছিল (host:port) */
+    fun syncHost(macId: String): String = sp.getString("sync_host_$macId", "") ?: ""
+    fun setSyncHost(macId: String, v: String) = sp.edit().putString("sync_host_$macId", v).apply()
+    fun syncAt(macId: String): Long = sp.getLong("sync_at_$macId", 0L)
+    fun setSyncAt(macId: String, v: Long) = sp.edit().putLong("sync_at_$macId", v).apply()
+    fun syncOk(macId: String): Boolean = sp.getBoolean("sync_ok_$macId", false)
+    fun setSyncOk(macId: String, v: Boolean) = sp.edit().putBoolean("sync_ok_$macId", v).apply()
+    fun syncMacName(macId: String): String = sp.getString("sync_mac_$macId", "") ?: ""
+    fun setSyncMacName(macId: String, v: String) = sp.edit().putString("sync_mac_$macId", v.take(40)).apply()
 }
 
 /** নোটিফিকেশনের শব্দ কোথা থেকে */

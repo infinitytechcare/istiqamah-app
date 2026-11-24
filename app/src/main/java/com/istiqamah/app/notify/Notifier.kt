@@ -442,6 +442,29 @@ object Notifier {
                 fasting(ctx, kind, date, id)
             NotifKind.ZAKAT_SOON, NotifKind.ZAKAT_DAY, NotifKind.SADAQAH_WEEKLY, NotifKind.DHUL_HIJJAH_EVE,
             NotifKind.KIN_DAY, NotifKind.DEBT_DUE, NotifKind.FAMILY_HALAQA -> charity(ctx, kind, date, id)
+            NotifKind.WORK_LEAVE, NotifKind.WORK_START, NotifKind.WORK_END -> {
+                val prefs = Prefs(ctx)
+                val proof = com.istiqamah.app.core.Rizq.proofFor(date)
+                val s = prefs.homeMode.schedule
+                when (kind) {
+                    NotifKind.WORK_LEAVE -> simple(
+                        "🏢 অফিসে রওনা দেওয়ার সময় — ${Bn.time(s.start)}-এ শুরু",
+                        "সময়মতো পৌঁছানোও আমানত। বের হওয়ার দোয়া:\n${com.istiqamah.app.core.Rizq.LEAVE_DUA_AR}\n" +
+                            "${com.istiqamah.app.core.Rizq.LEAVE_DUA_BN}\n— ${com.istiqamah.app.core.Rizq.LEAVE_DUA_REF}\n\n${proof.text}\n— ${proof.ref}",
+                        "home",
+                    )
+                    NotifKind.WORK_START -> simple(
+                        "বিসমিল্লাহ — কাজ শুরু",
+                        "নিয়ত: ${com.istiqamah.app.core.Rizq.NIYYAH}\n\n${proof.text}\n— ${proof.ref}",
+                        "home",
+                    )
+                    else -> simple(
+                        "আলহামদুলিল্লাহ — আজকের কাজ শেষ",
+                        "হালাল রুজির জন্য শুকরিয়া। এবার পরিবারের হক — সময়মতো বাড়ি ফিরুন।",
+                        "home",
+                    )
+                }
+            }
             NotifKind.FIT_WALK -> {
                 val prefs = Prefs(ctx)
                 if (com.istiqamah.app.core.BodyAct.WALK in prefs.bodyLog[date].orEmpty()) return

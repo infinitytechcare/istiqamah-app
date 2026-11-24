@@ -142,8 +142,19 @@ fun HomeAloneScreen(vm: AppVm, open: (String) -> Unit, onBack: () -> Unit) {
                             )
                         }
                     }
-                    HItem("অফিস শুরু", Bn.time(p.workStart)) { dialog = "start" }
-                    HItem("অফিস শেষ (বাসায় ফেরা)", Bn.time(p.workEnd)) { dialog = "end" }
+                    HItem("অফিস শুরু", Bn.time(p.workStart)) { pickTime(ctx, p.workStart) { p.workStart = it; changed() } }
+                    HItem("অফিস শেষ (বাসায় ফেরা)", Bn.time(p.workEnd)) { pickTime(ctx, p.workEnd) { p.workEnd = it; changed() } }
+                    // v0.18: সময়মতো কাজে যাওয়া — হালাল রুজির অংশ
+                    HToggle("অফিসের রিমাইন্ডার (হালাল রুজি)", "সময়মতো রওনা, কাজ শুরুর নিয়ত — ছুটির দিন বা \"আজ ঘরে\" বাছলে আসে না", p.workRemindOn) {
+                        p.workRemindOn = it; changed()
+                    }
+                    if (p.workRemindOn) {
+                        val r = p.workReminders
+                        HItem("যাতায়াতে কত সময়", "${Bn.num(r.commuteMin)} মিনিট — রওনার ডাক ${Bn.time(p.workStart.minusMinutes(r.commuteMin + com.istiqamah.app.core.Rizq.READY_MIN))}-এ") { dialog = "commute" }
+                        HToggle("রওনা দেওয়ার ডাক", "বের হওয়ার দোয়াসহ", r.leave) { p.workReminders = r.copy(leave = it); changed() }
+                        HToggle("কাজ শুরুর নিয়ত", "অফিস শুরুর সময়ে", r.start) { p.workReminders = r.copy(start = it); changed() }
+                        HToggle("কাজ শেষে শুকরিয়া", "অফিস শেষের সময়ে — সময়মতো বাড়ি ফেরা", r.end) { p.workReminders = r.copy(end = it); changed() }
+                    }
                 }
                 val homeToday = Engine.windows(ctx, today)?.filter { Situation.isHome(it.start, p.homeMode) }?.map { it.prayer.bn }
                 if (homeToday != null) {
@@ -281,6 +292,12 @@ fun HomeAloneScreen(vm: AppVm, open: (String) -> Unit, onBack: () -> Unit) {
 
     val close = { dialog = null }
     when (dialog) {
+        "commute" -> {
+            val opts = listOf(5, 10, 15, 20, 30, 40, 45, 60, 75, 90, 120)
+            HChoice("বাসা থেকে অফিসে যেতে কত সময়?", opts.map { "${Bn.num(it)} মিনিট" }, opts.indexOf(p.workReminders.commuteMin), close) {
+                p.workReminders = p.workReminders.copy(commuteMin = opts[it]); changed()
+            }
+        }
         "start", "end" -> {
             val isStart = dialog == "start"
             val hours = if (isStart) (5..13).toList() else (12..23).toList()
@@ -447,4 +464,9 @@ fun PrimeScreen(vm: AppVm, onBack: () -> Unit) {
         },
         onClose = onBack,
     )
+}
+
+/** v0.18: অফিসের সময় মিনিট ধরে বাছাই (Android-এর নিজস্ব ঘড়ি) */
+private fun pickTime(ctx: android.content.Context, cur: LocalTime, onPick: (LocalTime) -> Unit) {
+    android.app.TimePickerDialog(ctx, { _, h, m -> onPick(LocalTime.of(h, m)) }, cur.hour, cur.minute, false).show()
 }

@@ -37,7 +37,7 @@ class AlarmReceiver : BroadcastReceiver() {
                 val date = runCatching { LocalDate.parse(intent.getStringExtra(Engine.EXTRA_DATE)) }.getOrElse { Engine.today(ctx) }
                 val isTest = intent.getBooleanExtra(Engine.EXTRA_TEST, false)
                 // v0.14: ডাকের ঠিক আগে ম্যাক থেকে খবর নিই — ম্যাকে পড়া হয়ে গেলে ফোন আর বাজবে না
-                if (kind.isPrayer && p != null && !isTest && PhoneSync.paired(ctx) != null) {
+                if (kind.isPrayer && p != null && !isTest && PhoneSync.hasPairs(ctx)) {
                     runCatching { PhoneSync.syncNow(ctx, budgetMs = 2500) }
                 }
                 Notifier.showFor(ctx, kind, p, date, isTest = intent.getBooleanExtra(Engine.EXTRA_TEST, false))
